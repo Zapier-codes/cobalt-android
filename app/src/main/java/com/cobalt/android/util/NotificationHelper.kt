@@ -51,11 +51,11 @@ class NotificationHelper(private val context: Context) {
         manager.notify((BASE_ID + recordId).toInt(), notif)
     }
 
-    fun showComplete(recordId: Long, filename: String, uri: Uri) {
+    fun showComplete(recordId: Long, filename: String, uri: Uri, mimeType: String = "video/*") {
         val openIntent = PendingIntent.getActivity(
             context, recordId.toInt(),
             Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "video/*")
+                setDataAndType(uri, mimeType)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT

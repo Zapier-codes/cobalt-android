@@ -221,4 +221,9 @@ font-family:monospace;font-size:14px;cursor:pointer'>retry</button>
         if (binding.webView.canGoBack()) binding.webView.goBack()
         else super.onBackPressed()
     }
+
+    override fun onDestroy() {
+        binding.webView.destroy()
+        super.onDestroy()
+    }
 }

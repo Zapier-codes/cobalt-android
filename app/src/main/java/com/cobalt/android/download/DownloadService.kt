@@ -120,7 +120,7 @@ class DownloadService : Service() {
                     mediaStoreWriter.finalize(opened.uri)
                     repository.updateMediaStoreUri(record.id, opened.uri.toString())
                     repository.updateStatus(record.id, DownloadStatus.COMPLETE)
-                    notificationHelper.showComplete(record.id, record.filename, opened.uri)
+                    notificationHelper.showComplete(record.id, record.filename, opened.uri, record.mimeType)
                 } catch (e: Exception) {
                     mediaStoreWriter.delete(opened.uri)
                     throw e
@@ -160,7 +160,7 @@ class DownloadService : Service() {
                 mediaStoreWriter.finalize(opened.uri)
                 repository.updateMediaStoreUri(record.id, opened.uri.toString())
                 repository.updateStatus(record.id, DownloadStatus.COMPLETE)
-                notificationHelper.showComplete(record.id, record.filename, opened.uri)
+                notificationHelper.showComplete(record.id, record.filename, opened.uri, record.mimeType)
             } catch (e: Exception) {
                 mediaStoreWriter.delete(opened.uri)
                 throw e

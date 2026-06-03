@@ -56,7 +56,7 @@ class SettingsSheet : BottomSheetDialogFragment() {
 
     override fun onStop() {
         super.onStop()
-        val url = binding.etCobaltUrl.text?.toString()?.trim() ?: return
+        val url = _binding?.etCobaltUrl?.text?.toString()?.trim() ?: return
         if (url.isNotBlank() && url != settings.cobaltInstanceUrl) {
             settings.cobaltInstanceUrl = url
             onCobaltUrlChanged?.invoke(url)

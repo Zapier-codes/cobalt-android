@@ -139,16 +139,17 @@ class CobaltWebView @JvmOverloads constructor(
     }
 
     private fun injectUrl(url: String, audioOnly: Boolean) {
-        val escaped = url.replace("\\", "\\\\").replace("'", "\\'")
+        val json = org.json.JSONObject().apply {
+            put("url", url)
+            put("audioOnly", audioOnly)
+        }.toString()
         evaluateJavascript(
-            "window._cobaltInjectUrl('$escaped', ${audioOnly});", null
+            "(function(d){window._cobaltInjectUrl(d.url,d.audioOnly);})(JSON.parse($json));", null
         )
     }
 
     private fun injectBridgeJs() {
-        // Escape backticks and backslashes in the JS source before embedding
-        val safe = bridgeJs.replace("\\", "\\\\").replace("`", "\\`")
-        evaluateJavascript("(function(){$safe})()", null)
+        evaluateJavascript(bridgeJs, null)
     }
 
     private fun extractFilename(contentDisposition: String, mimeType: String): String {
