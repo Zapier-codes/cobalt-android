@@ -21,7 +21,7 @@ android {
         debug { isDebuggable = true }
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // proguardFiles not needed while minification is disabled
         }
     }
 
@@ -35,7 +35,6 @@ android {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.23")
     implementation("androidx.core:core-ktx:1.13.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.0")
@@ -48,7 +47,7 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.vectordrawable:vectordrawable:1.2.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

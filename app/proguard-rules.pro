@@ -1,4 +1,4 @@
--keep class com.cobalt.android.CobaltJsBridge { *; }
--keepclassmembers class com.cobalt.android.CobaltJsBridge {
+# Keep JS bridge for WebView — annotation-only form is robust under future refactors
+-keepclasseswithmembers class com.cobalt.android.CobaltJsBridge {
     @android.webkit.JavascriptInterface <methods>;
 }
