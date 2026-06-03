@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cobalt_background">#000000</color>
+    <color name="cobalt_surface">#191919</color>
+    <color name="cobalt_surface_sidebar">#131313</color>
+    <color name="cobalt_surface_elevated">#282828</color>
+    <color name="cobalt_text_primary">#E1E1E1</color>
+    <color name="cobalt_text_secondary">#818181</color>
+    <color name="cobalt_accent_blue">#2A7CE1</color>
+    <color name="cobalt_success_green">#37AA42</color>
+    <color name="cobalt_error_red">#ED2236</color>
+    <color name="cobalt_input_border">#383838</color>
+</resources>

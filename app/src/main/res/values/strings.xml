@@ -1,3 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Cobalt</string>
+    <string name="download_from_clipboard">download from clipboard?</string>
+    <string name="not_a_supported_link">that doesn\'t look like a supported link</string>
+    <string name="merging_locally">merging locally — may take a moment</string>
+    <string name="local_merge_failed">local merge failed</string>
+    <string name="not_enough_storage">not enough storage</string>
+    <string name="check_cobalt_url">check your cobalt instance URL in settings</string>
+    <string name="shortcut_paste_download">Paste &amp; Download</string>
+    <string name="shortcut_open_queue">Open Queue</string>
+    <string name="tab_active">active</string>
+    <string name="tab_history">history</string>
+    <string name="action_open">open</string>
+    <string name="action_share">share</string>
+    <string name="action_retry">retry</string>
+    <string name="action_cancel">cancel</string>
+    <string name="settings_cobalt_url">cobalt instance</string>
+    <string name="settings_audio_only">audio-only mode</string>
+    <string name="settings_clipboard_trigger">clipboard trigger</string>
+    <string name="settings_battery">battery optimization</string>
+    <string name="settings_clear_history">clear history</string>
+    <string name="battery_dialog_title">Background Downloads</string>
+    <string name="battery_dialog_message">Allow Cobalt to complete downloads when the app is in the background?</string>
+    <string name="allow">Allow</string>
+    <string name="not_now">Not now</string>
+    <string name="channel_downloads_name">Downloads</string>
+    <string name="channel_downloads_desc">Download progress and completion</string>
+    <string name="retry_notification_title">Ready to retry</string>
 </resources>

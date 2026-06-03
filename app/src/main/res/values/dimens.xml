@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="border_radius">11dp</dimen>
+    <dimen name="padding_default">12dp</dimen>
+    <dimen name="fab_size">42dp</dimen>
+    <dimen name="progress_bar_height">2dp</dimen>
+</resources>
