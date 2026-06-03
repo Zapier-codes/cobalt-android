@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/cobalt_background">
+
+    <com.cobalt.android.CobaltWebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSettings"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="48dp"
+        android:layout_marginEnd="12dp"
+        android:text="⋯"
+        android:textColor="@color/cobalt_text_secondary"
+        android:textSize="20sp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:padding="8dp"
+        app:backgroundTint="@color/cobalt_surface"
+        app:cornerRadius="@dimen/border_radius" />
+
+    <FrameLayout
+        android:id="@+id/fabQueue"
+        android:layout_width="@dimen/fab_size"
+        android:layout_height="@dimen/fab_size"
+        android:layout_gravity="bottom|end"
+        android:layout_marginBottom="24dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_fab"
+        android:clickable="true"
+        android:focusable="true"
+        android:elevation="4dp">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_queue"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/tvBadge"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="4dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/bg_badge"
+            android:gravity="center"
+            android:textColor="@android:color/white"
+            android:textSize="9sp"
+            android:visibility="gone"
+            android:fontFamily="@font/ibm_plex_mono_regular" />
+
+    </FrameLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
