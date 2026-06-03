@@ -32,4 +32,8 @@ class DownloadRepository(context: Context) {
     suspend fun getById(id: Long): DownloadRecord? = dao.getById(id)
 
     suspend fun clearHistory() = dao.clearHistory()
+
+    suspend fun resetStuckDownloads() {
+        dao.resetStuckDownloads()
+    }
 }

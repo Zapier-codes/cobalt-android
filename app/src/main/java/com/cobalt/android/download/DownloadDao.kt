@@ -31,4 +31,7 @@ interface DownloadDao {
 
     @Query("DELETE FROM downloads WHERE status = 'COMPLETE' OR status = 'FAILED'")
     suspend fun clearHistory()
+
+    @Query("UPDATE downloads SET status = 'FAILED_NETWORK' WHERE status = 'DOWNLOADING'")
+    suspend fun resetStuckDownloads()
 }

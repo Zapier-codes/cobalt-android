@@ -36,11 +36,16 @@ class DownloadService : Service() {
         repository = DownloadRepository(this)
         notificationHelper = NotificationHelper(this)
         mediaStoreWriter = MediaStoreWriter(this)
+        // Reset any downloads stuck in DOWNLOADING from a previous process kill
+        scope.launch { repository.resetStuckDownloads() }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Must call startForeground() on main thread before any coroutines
+        startForeground()
+
         when (intent?.action) {
             ACTION_HTTPS -> {
                 val record = DownloadRecord(
@@ -76,7 +81,6 @@ class DownloadService : Service() {
 
     private suspend fun processHttps(record: DownloadRecord) {
         activeCount.incrementAndGet()
-        startForeground()
         try {
             repository.updateStatus(record.id, DownloadStatus.DOWNLOADING)
             val request = Request.Builder()
@@ -142,10 +146,9 @@ class DownloadService : Service() {
 
     private suspend fun processBlob(record: DownloadRecord) {
         activeCount.incrementAndGet()
-        startForeground()
+        val tempFile = File(record.tempFilePath)
         try {
             repository.updateStatus(record.id, DownloadStatus.DOWNLOADING)
-            val tempFile = File(record.tempFilePath)
             if (!tempFile.exists()) throw IOException("Temp file missing: ${record.tempFilePath}")
 
             val opened = mediaStoreWriter.open(record.filename, record.mimeType)
@@ -161,14 +164,13 @@ class DownloadService : Service() {
             } catch (e: Exception) {
                 mediaStoreWriter.delete(opened.uri)
                 throw e
-            } finally {
-                tempFile.delete()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Blob download failed", e)
             repository.updateStatus(record.id, DownloadStatus.FAILED)
             notificationHelper.showFailed(record.id, record.filename)
         } finally {
+            tempFile.delete()   // always clean up temp file
             if (activeCount.decrementAndGet() == 0) stopSelf()
         }
     }
