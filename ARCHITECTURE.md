@@ -6,7 +6,7 @@ model and a TikTok-caliber Shorts feed. Fully usable standalone (NewPipe-level
 extraction, no external dependency), with an optional Cobalt-powered upgrade
 unlocked via user-supplied API key. All visual identity — theme, colors, app
 name/branding — is driven remotely by a config dashboard, so changes propagate
-without a rebuild.
+without a rebuild. Everything else about the app runs entirely on-device.
 
 ## 0. No Accounts, No Login — Anywhere
 - The app must never require sign-up, login, or any account creation, for any
@@ -49,8 +49,8 @@ without a rebuild.
   single video, which then autoplays — mirrors TikTok's one-at-a-time paging.
   Previous video pauses/releases when swiped away.
 - **Preload strategy**: only the *next single* video pre-buffers while the
-  current one plays — not a batch. Combined with the shared resolution cache
-  (section 10), this keeps both bandwidth and redundant resolution calls bounded.
+  current one plays — not a batch. Combined with the local resolution cache
+  (section 10), this keeps bandwidth and redundant resolution calls bounded.
 - **On-screen controls/overlay**:
   - Tap to pause/resume
   - Mute/unmute toggle
@@ -73,7 +73,7 @@ without a rebuild.
   a browsable grid.
 - Each card: thumbnail, title, source/channel, duration badge. Tap opens an
   overlay detail/player view (section 7).
-- Uses skeleton placeholders while loading (section 11) and the shared
+- Uses skeleton placeholders while loading (section 11) and the local
   resolution cache (section 10) so returning users see instant content.
 
 ## 4. Extraction Engine — Dual Mode
@@ -88,6 +88,11 @@ without a rebuild.
   quality sources / broader platform support, falling back to NewPipe-
   Extractor/InnerTube where Cobalt doesn't cover a source.
 - Additive layer — standalone mode always keeps working without a key.
+- Note: Cobalt itself is an external API the user opts into by supplying a
+  key — this is the one piece that isn't purely on-device by nature, since
+  it's a third-party service the user explicitly chooses to use. Everything
+  else in the app (caching, storage, preferences, standalone extraction)
+  stays on-device regardless of whether Cobalt mode is active.
 
 ## 5. Smart Search Bar
 - Top nav, visible on Home.
@@ -133,30 +138,26 @@ without a rebuild.
   still gets locally-relevant content without granting the permission.
 - No other runtime permission gates any core feature.
 
-## 10. Shared Resolution & Caching Layer
-This is a distinct architectural layer from local Room storage — it exists so
-the app doesn't re-resolve the same content repeatedly, whether that's the
-same user reopening an item or many users requesting the same popular item.
+## 10. Local Caching & Resolution Layer (fully on-device, no backend)
+Everything in this app runs entirely on the user's device — there is no
+server, backend, or shared service of any kind. Caching is scoped per-device
+only: it makes *this user's* repeat visits fast. It does not and cannot serve
+other users' requests, since that would require a shared server, which is
+explicitly out of scope for this app.
 
-- **Local cache (per-device, Room)**: resolved stream metadata/URLs and
-  extracted info are cached with a TTL. Reopening a previously-viewed item
-  reads from local cache first; only re-resolves on cache miss or expiry.
-  DAOs should be written cache-first: check local cache → serve immediately
-  if fresh → refresh in background if stale, rather than blocking on a fresh
-  network resolve every time a screen opens.
-- **Shared resolution cache (backend layer)**: popular/trending items get
-  resolved once and cached centrally (e.g. a lightweight resolver/cache
-  service sitting between the app and InnerTube/NewPipe/Cobalt), so one
-  resolution can serve many users instead of each device independently
-  re-resolving identical content. This is a backend component — flag it
-  clearly as out-of-scope for the Android client code itself unless a
-  resolver-service repo/endpoint is explicitly specified; the app should be
-  built to call a resolution endpoint that *could* be backed by such a shared
-  cache, rather than resolving directly against InnerTube in a way that
-  can't later be swapped for a shared-cache-backed endpoint.
-- Cache invalidation: TTL-based (short for trending/fast-changing content,
-  longer for stable metadata like titles/thumbnails); manual invalidation
-  path for when a resolved stream URL expires and playback fails.
+- **Local cache (Room)**: resolved stream metadata/URLs and extracted info are
+  cached on-device with a TTL. Reopening a previously-viewed item reads from
+  local cache first; only re-resolves on cache miss or expiry.
+- **Cache-first DAO pattern**: DAOs check local cache → serve immediately if
+  fresh → refresh in the background if stale, rather than blocking on a fresh
+  resolve every time a screen opens. This is what prevents the same device
+  from re-resolving the same item on every visit.
+- **Cache invalidation**: TTL-based (short for trending/fast-changing content,
+  longer for stable metadata like titles/thumbnails); manual invalidation path
+  for when a resolved stream URL expires and playback fails.
+- **Prefetch on Home/Shorts load**: as items are fetched for the visible feed,
+  cache them immediately so scrolling back or reopening within the session is
+  instant — still entirely local, no cross-device sharing.
 
 ## 11. Skeleton Loading
 - Every content-loading surface (Home rows/grid, Shorts feed entries, search
@@ -188,9 +189,9 @@ Three additions worth building in, beyond what's specified above:
   this doc — see section 0.
 - No monetization/paywall logic in this phase.
 - No comments or social features requiring identity.
-- The shared backend resolution/cache service (section 10) is a separate
-  system from this app repo — build the client against a resolution endpoint
-  contract, mock/stub if the real service isn't specified yet.
+- No backend, server, or shared service of any kind — everything runs
+  on-device (Cobalt, if the user opts in, is the sole external API call,
+  and is explicitly user-initiated via a locally-stored key).
 
 ## Build Sequencing (for the agent)
 Work in this order, each phase landing and passing CI before the next begins:
