@@ -39,7 +39,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles("**/*.gradle*", "**/gradle-wrapper.properties") }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
 
@@ -53,7 +53,7 @@ jobs:
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Compute decimal build number
-        if: success() && github.ref == "refs/heads/main"
+        if: success() && github.ref == 'refs/heads/main'
         id: version
         run: |
           BASE="1.0"
@@ -61,14 +61,14 @@ jobs:
           echo "tag=${BASE}.${BUILD_NUM}" >> "$GITHUB_OUTPUT"
 
       - name: Find built APK
-        if: success() && github.ref == "refs/heads/main"
+        if: success() && github.ref == 'refs/heads/main'
         id: apk
         run: |
           APK_PATH=$(find . -path "*/outputs/apk/debug/*.apk" | head -n 1)
           echo "path=${APK_PATH}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release with APK
-        if: success() && github.ref == "refs/heads/main"
+        if: success() && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ steps.version.outputs.tag }}"
