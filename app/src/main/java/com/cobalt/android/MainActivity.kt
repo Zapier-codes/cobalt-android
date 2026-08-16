@@ -9,14 +9,13 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.os.bundleOf
 import androidx.core.view.WindowCompat
 import androidx.navigation.fragment.findNavController
-import com.cobalt.android.download.DownloadService
 import com.cobalt.android.ui.DownloadQueueSheet
 import com.cobalt.android.ui.DownloadQueueViewModel
 import com.cobalt.android.ui.SettingsSheet
@@ -24,9 +23,8 @@ import com.cobalt.android.util.ClipboardHelper
 import com.cobalt.android.util.SettingsRepository
 import com.cobalt.android.util.UrlMatcher
 import com.google.android.material.snackbar.Snackbar
-import java.io.File
 
-class MainActivity : AppCompatActivity(), CobaltWebView.Listener {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsRepository
@@ -50,6 +48,7 @@ class MainActivity : AppCompatActivity(), CobaltWebView.Listener {
             .setupWithNavController(findNavController(R.id.navHost))
         setupFab()
         setupSettingsButton()
+        observeDownloadQueue()
         handleFirstLaunch()
         handleIntent(intent)
     }
@@ -64,13 +63,11 @@ class MainActivity : AppCompatActivity(), CobaltWebView.Listener {
         if (settings.clipboardTriggerEnabled) checkClipboard()
     }
 
-    // ── WebView setup ──────────────────────────────────────────────────────
+    // ── Download queue badge ─────────────────────────────────────────────────
+    // Was previously only wired up inside a dead setupWebView() that onCreate()
+    // never called, so the badge never actually updated. Moved here so it runs.
 
-    private fun setupWebView() {
-        binding.webView.listener = this
-        binding.webView.audioOnlyMode = settings.audioOnlyMode
-        binding.webView.loadUrl(settings.cobaltInstanceUrl)
-
+    private fun observeDownloadQueue() {
         queueViewModel.activeDownloads.observe(this) { list ->
             val count = list.size
             if (count > 0) {
@@ -94,9 +91,6 @@ class MainActivity : AppCompatActivity(), CobaltWebView.Listener {
     private fun setupSettingsButton() {
         binding.btnSettings.setOnClickListener {
             SettingsSheet.newInstance().also { sheet ->
-                sheet.onCobaltUrlChanged = { newUrl ->
-                    binding.webView.loadUrl(newUrl)
-                }
                 sheet.show(supportFragmentManager, SettingsSheet.TAG)
             }
         }
@@ -145,10 +139,22 @@ class MainActivity : AppCompatActivity(), CobaltWebView.Listener {
             .show()
     }
 
+    // ── URL routing (no WebView) ─────────────────────────────────────────────
+    // Previously handed the URL to a WebView + JS bridge to resolve. That's
+    // gone. This now routes the URL to the Home tab as a nav argument;
+    // HomeFragment (Phase 3) is responsible for actually resolving it via
+    // LinkResolverRepository and driving the download from there. This is
+    // real navigation, not a stub — it does not pretend to resolve the link
+    // itself.
+
     private fun submitUrl(url: String) {
         currentOriginalUrl = url
-        binding.webView.audioOnlyMode = settings.audioOnlyMode
-        binding.webView.submitUrl(url, settings.audioOnlyMode)
+        findNavController(R.id.navHost).navigate(
+            R.id.nav_home,
+            bundleOf("pending_url" to url)
+        )
+        findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.navBottom)
+            .selectedItemId = R.id.nav_home
     }
 
     // ── First launch ───────────────────────────────────────────────────────
@@ -180,52 +186,5 @@ class MainActivity : AppCompatActivity(), CobaltWebView.Listener {
                 .setNegativeButton(getString(R.string.not_now), null)
                 .show()
         }
-    }
-
-    // ── CobaltWebView.Listener ─────────────────────────────────────────────
-
-    override fun onUrlSubmitted(originalUrl: String) {
-        currentOriginalUrl = originalUrl
-    }
-
-    override fun onBlobDownloadReady(tempFile: File, filename: String, mimeType: String) {
-        Toast.makeText(this, getString(R.string.merging_locally), Toast.LENGTH_SHORT).show()
-        DownloadService.startBlob(this, tempFile.absolutePath, filename, mimeType, currentOriginalUrl)
-    }
-
-    override fun onBlobError(message: String) {
-        Toast.makeText(this, getString(R.string.local_merge_failed), Toast.LENGTH_SHORT).show()
-    }
-
-    override fun onPageError(url: String, isCustomInstance: Boolean) {
-        val hint = if (isCustomInstance) "<p style='color:#818181;font-size:12px'>${getString(R.string.check_cobalt_url)}</p>" else ""
-        val errorHtml = """<!DOCTYPE html>
-<html><body style='background:#000;color:#e1e1e1;font-family:monospace;
-display:flex;flex-direction:column;align-items:center;justify-content:center;
-height:100vh;margin:0;padding:24px;box-sizing:border-box;text-align:center'>
-<p style='font-size:16px'>can't reach cobalt</p>
-$hint
-<button onclick='location.reload()' style='margin-top:16px;background:#191919;
-color:#e1e1e1;border:1px solid #383838;border-radius:11px;padding:8px 20px;
-font-family:monospace;font-size:14px;cursor:pointer'>retry</button>
-</body></html>"""
-        binding.webView.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null)
-    }
-
-    override fun onPageLoaded() { /* no-op */ }
-
-    override fun onLocalProcessingDetected() {
-        Toast.makeText(this, getString(R.string.merging_locally), Toast.LENGTH_SHORT).show()
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (binding.webView.canGoBack()) binding.webView.goBack()
-        else super.onBackPressed()
-    }
-
-    override fun onDestroy() {
-        binding.webView.destroy()
-        super.onDestroy()
     }
 }

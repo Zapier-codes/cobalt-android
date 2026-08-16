@@ -33,6 +33,68 @@ source left in permanently, not a "wire this up later" comment. Specifically:
   smaller piece of the phase that CAN be fully implemented in one cycle,
   instead of writing a partial/fake version of the larger piece.
 
+## Unified enhancement, NOT a parallel rebuild
+
+This is the single most important rule in this document, added after this
+session found the previous version of this spec had Hermes about to build a
+second, competing download system next to one that already works.
+**`cobalt-android` is a mature, already-functioning app.** Every phase below
+must **extend and connect to what already exists**, never re-invent it under
+a new name. Before creating ANY new file, grep the existing codebase for
+something that already does the job — if it exists, wire into it instead of
+writing a parallel version.
+
+**Already exists — reuse these, do not recreate them:**
+- `download/DownloadRecord.kt`, `DownloadDao.kt`, `DownloadDatabase.kt`,
+  `DownloadRepository.kt` — the real Room-backed download schema. Fields:
+  `originalUrl`, `cobaltUrl`, `filename`, `mimeType`, `status`
+  (`DownloadStatus` enum: QUEUED/DOWNLOADING/FAILED_NETWORK/FAILED/COMPLETE),
+  `bytesDownloaded`/`totalBytes`, `mediaStoreUriString`, `retryCount`.
+  **Do not create `DownloadEntity` — `DownloadRecord` already is that
+  entity.**
+- `download/DownloadService.kt` — a real foreground `Service` with
+  `ACTION_HTTPS` (direct URL → OkHttp download → MediaStore, with live
+  progress) and `ACTION_BLOB` (now unused post-WebView-removal, safe to
+  leave dormant or remove in a later phase, not this one). Call
+  `DownloadService.startHttps(...)` to enqueue a real download.
+  **Do not create a new `DownloadWorker` for the download itself** —
+  `DownloadService` already does this end-to-end.
+- `download/RetryDownloadWorker.kt` — WorkManager-based retry-on-network-fail,
+  already wired from `DownloadService.handleNetworkFail()`.
+- `util/NotificationHelper.kt` — already produces the foreground/progress/
+  complete/failed notifications `DownloadService` uses. **Do not create
+  `DownloadNotificationManager` — this is that manager.**
+- `download/MediaStoreWriter.kt` — already handles writing completed files
+  into shared storage.
+- `ui/HomeFragment.kt`, `ui/ShortsFragment.kt`, `ui/SettingsFragment.kt`,
+  `ui/shorts/ShortsViewModel.kt`, `ui/shorts/ShortsAdapter.kt` — already
+  exist and are wired into `nav_graph.xml` / the bottom nav.
+- `util/SettingsRepository.kt` — already persists `cobaltInstanceUrl` and
+  other settings; extend this file for new preferences rather than adding a
+  parallel settings store, unless a phase explicitly calls for Room-backed
+  preferences (Phase 7 — and even then, check this file first).
+
+**Genuinely new in this rewrite (nothing existing covers these):**
+- `ResolutionCacheEntity` + DAO (Phase 4) — no existing equivalent.
+- `ResolutionPickerDialog` (Phase 4) — no existing equivalent.
+- A repository that calls the cobalt API directly to resolve a pasted link
+  into a real media URL (Phase 3) — replaces what WebView used to do.
+- Everything in Phases 2, 5, 6, 7 that has no existing file (Shorts caching,
+  downloads library screen, history/likes, settings screen content).
+
+## No more WebView
+
+As of this session, `CobaltWebView.kt` and `CobaltJsBridge.kt` are removed,
+and `MainActivity.kt` no longer implements `CobaltWebView.Listener` or
+references `binding.webView` (the layout has not had a `WebView` since the
+bottom-nav rewrite in an earlier session — `MainActivity.kt` had dead code
+still referencing it, which would not compile; this is fixed). All link
+resolution and download-triggering must go through direct API calls
+(OkHttp, already a dependency) feeding into the existing `DownloadService`
+above — never by loading a page in a `WebView` and scraping/bridging out of
+it. Phase 3's `LinkResolverRepository` is the one place a real HTTP call to
+the cobalt instance API belongs.
+
 Design references (patterns only, no code or assets copied):
 - **Velune** (open-source YouTube Music client) — for layered MVVM/Clean
   Architecture structure: `ui/screens`, `viewmodels`, `repository`,
@@ -49,9 +111,14 @@ Design references (patterns only, no code or assets copied):
 ## Tech stack (unchanged from existing repo)
 - Kotlin, View-based UI (existing `activity_main.xml` / `MainActivity.kt`
   approach — NOT Compose, to match what's already in the repo)
-- Room for local persistence
+- **No WebView** — removed this session. Link resolution is a direct API
+  call (OkHttp, already a dependency), not a WebView/JS-bridge.
+- Room for local persistence — `DownloadRecord`/`DownloadDao` already exist,
+  see "Unified enhancement" above.
 - Material Components (already a dependency per `build.gradle.kts`)
-- WorkManager for background downloads
+- WorkManager for background downloads — `RetryDownloadWorker` already
+  exists; only genuinely new WorkManager usage should be added if a phase
+  needs something the existing `DownloadService` doesn't cover.
 - Standard Android `ViewModel` + `LiveData`/`Flow`
 
 ## Package structure (target — build toward this, don't require it before
@@ -69,7 +136,9 @@ app/src/main/java/com/cobalt/android/
 │   ├── daos/             one DAO interface per entity group
 │   └── CobaltDatabase.kt Room database, version-controlled with migrations
 ├── repository/           one repository per feature area, wraps DAO + network
-├── download/             DownloadService, DownloadWorker, DownloadNotificationManager
+├── download/             ALREADY EXISTS — DownloadService, DownloadRecord,
+│                         DownloadDao, DownloadDatabase, DownloadRepository,
+│                         RetryDownloadWorker. Extend, do not duplicate.
 ├── di/                   manual DI or Hilt modules (match whatever the repo already uses)
 └── MainActivity.kt       hosts bottom nav + fragment container (already exists)
 ```
@@ -99,12 +168,31 @@ inspecting the actual repo) are the source of truth, not state.json's
 
 **Definition of Done:**
 1. `activity_main.xml` contains a `BottomNavigationView` with exactly 3 menu
-   items referencing `bottom_nav_menu.xml`.
-2. `MainActivity.kt` contains an `onItemSelectedListener` (or equivalent)
-   that actually swaps the fragment container's content — not a stub/TODO.
-3. All three destination fragments exist as real files (even if their body
-   is minimal) — see Phases 2-3 for Home/Shorts specifically.
-4. `bg_fab.xml` is untouched (oval FAB background, not an icon).
+   items referencing `bottom_nav_menu.xml`. ✅ done.
+2. `MainActivity.kt` wires the bottom nav to actually swap the fragment
+   container's content. The existing implementation uses
+   `BottomNavigationView.setupWithNavController(navController)` against
+   `nav_graph.xml` — this is the Navigation-Component equivalent of a manual
+   `onItemSelectedListener` and satisfies this requirement as-is. ✅ done.
+3. All three destination fragments exist as real files and are declared in
+   `nav_graph.xml` (`HomeFragment`, `ShortsFragment`, `SettingsFragment`).
+   ✅ done.
+4. `bg_fab.xml` is untouched (oval FAB background, not an icon). ✅ verified
+   unchanged since its original commit.
+5. **`MainActivity.kt` compiles clean with no WebView references.** Fixed
+   this session: `MainActivity` still implemented `CobaltWebView.Listener`
+   and referenced `binding.webView` in `setupWebView()`/`checkClipboard()`/
+   `submitUrl()`, even though `activity_main.xml` has had no `WebView`
+   element since the bottom-nav rewrite — this did not compile.
+   `CobaltWebView.kt`/`CobaltJsBridge.kt` are deleted; `submitUrl()` now
+   navigates to the Home tab and passes the pasted/shared URL as a nav
+   argument (`pending_url`) for Phase 3's `HomeFragment` to consume — real
+   routing, not a fake "handled" state.
+6. **The download-queue badge observer now actually runs.** Found this
+   session: `queueViewModel.activeDownloads.observe(...)` (drives the FAB
+   badge count) was only ever registered inside the dead `setupWebView()`,
+   which `onCreate()` never called — so the badge never updated. Moved
+   directly into `onCreate()`.
 
 ---
 
@@ -141,49 +229,60 @@ inspecting the actual repo) are the source of truth, not state.json's
 - `app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt`
 - `app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt`
 - `app/src/main/res/layout/fragment_home.xml` — top search/paste-link bar
-  + a `WebView` (or feed of recent/trending sources) below it, matching the
-  existing `MainActivity` WebView-centric approach
+  + a feed of recent/trending sources below it. **No `WebView`** — replaces
+  the current placeholder (`tvPlaceholder` + a stray `TODO` comment).
 - `app/src/main/java/com/cobalt/android/repository/LinkResolverRepository.kt`
-  — takes a pasted URL, resolves available formats/resolutions (stub the
-  network call if the real resolver isn't ready yet, but the interface and
-  call site must be real)
+  — takes a pasted URL, calls the cobalt instance API directly (OkHttp,
+  `settings.cobaltInstanceUrl` from `SettingsRepository`) to resolve
+  available formats/resolutions. This is a real network call from the
+  start — there is no WebView fallback to lean on anymore, so this cannot
+  be stubbed even temporarily without violating "no stubs, no
+  placeholders" above.
 
 **Definition of Done:**
 1. Home screen has a visible paste-link/search entry field distinct from
    the Shorts feed.
-2. Submitting a link invokes `LinkResolverRepository` (real call, not a
-   TODO/comment).
-3. A successful resolve navigates to or surfaces the format/resolution
+2. `HomeFragment` reads a `pending_url` nav argument on launch (set by
+   `MainActivity.submitUrl()` for share-intent/clipboard/shortcut-triggered
+   URLs — see Phase 1 item 5) and auto-submits it if present.
+3. Submitting a link (manually or via `pending_url`) invokes
+   `LinkResolverRepository` with a real HTTP call — not a TODO/comment.
+4. A successful resolve navigates to or surfaces the format/resolution
    picker from Phase 4 — the two phases must actually connect.
 
 ---
 
-### Phase 4 — Download engine (queue, resolution picker, worker, notifications)
+### Phase 4 — Resolution picker (the download engine itself already exists)
+**Do NOT build a new download engine.** `DownloadRecord`/`DownloadDao`/
+`DownloadRepository`/`DownloadService`/`RetryDownloadWorker`/
+`NotificationHelper`/`MediaStoreWriter` already implement queueing,
+progress, retries, and notifications end-to-end via
+`DownloadService.startHttps(...)`. This phase only needs to add the piece
+that's genuinely missing: letting the user pick a resolution/format before
+that call happens.
+
 **Files:**
-- `app/src/main/java/com/cobalt/android/db/entities/DownloadEntity.kt` —
-  fields: id, sourceUrl, title, thumbnailUrl, resolution, status
-  (queued/downloading/paused/failed/complete), progress, filePath, createdAt
-- `app/src/main/java/com/cobalt/android/db/daos/DownloadDao.kt`
 - `app/src/main/java/com/cobalt/android/db/entities/ResolutionCacheEntity.kt`
-  — per-source available formats, to avoid re-resolving on every open
+  — per-source available formats, to avoid re-resolving on every open. Add
+  it to `DownloadDatabase.kt`'s existing entity list (do not create a new
+  database).
+- `app/src/main/java/com/cobalt/android/db/ResolutionCacheDao.kt`
 - `app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt`
-  — bottom sheet/dialog listing available resolutions/formats for a
-  resolved link, matching the Vidmate-style "pick quality before download"
-  step
-- `app/src/main/java/com/cobalt/android/download/DownloadWorker.kt` —
-  `CoroutineWorker` performing the actual download, updating `DownloadDao`
-  progress as it goes
-- `app/src/main/java/com/cobalt/android/download/DownloadNotificationManager.kt`
-  — persistent progress notification per active download
+  — bottom sheet listing resolutions/formats returned by
+  `LinkResolverRepository` (Phase 3), matching the Vidmate-style "pick
+  quality before download" step.
 
 **Definition of Done:**
-1. `DownloadEntity` + `DownloadDao` exist with the fields above, and
-   `CobaltDatabase.kt` includes `DownloadEntity` in its entity list.
+1. `ResolutionCacheEntity` + its DAO exist and are added to the *existing*
+   `DownloadDatabase.kt` entity list — not a new database.
 2. `ResolutionPickerDialog` is actually shown after `LinkResolverRepository`
    resolves a link (Phase 3 → Phase 4 wiring is real, not aspirational).
-3. Confirming a resolution enqueues a `DownloadWorker` via WorkManager (not
-   a fire-and-forget coroutine with no persistence/retry).
-4. A notification with progress appears while a download is active.
+3. Confirming a resolution calls `DownloadService.startHttps(...)` with the
+   chosen format's direct URL/filename/mimeType — reusing the existing
+   service, not a new worker.
+4. A notification with progress appears while a download is active — this
+   already happens via `NotificationHelper` inside `DownloadService`; this
+   step just confirms nothing broke that path.
 
 ---
 
@@ -196,8 +295,9 @@ inspecting the actual repo) are the source of truth, not state.json's
   or file size, tap-to-play
 
 **Definition of Done:**
-1. Screen queries `DownloadDao` (real Flow/LiveData, not mock data) and
-   reflects live progress for in-progress items.
+1. Screen queries the existing `DownloadDao`/`DownloadRepository`
+   (`allDownloads`/`activeDownloads` `LiveData`, already implemented — real
+   data, not mock) and reflects live progress for in-progress items.
 2. Tapping a completed item plays the local file (via a video player
    surface — reuse whatever player component exists, or ExoPlayer if none
    does yet).
