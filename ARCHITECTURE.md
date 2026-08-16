@@ -643,20 +643,30 @@ this session — same standing caveat as every phase since Phase 4.
 
 ---
 
-### Phase 12 — Settings: preference storage layer
-**Files:**
-- `app/src/main/java/com/cobalt/android/util/SettingsRepository.kt`
-  (already exists for `cobaltInstanceUrl` — extend it) or a
-  `PreferenceEntity.kt`/DataStore addition if the existing repository's
-  storage mechanism doesn't scale to the new keys below. Pick one approach
-  and use it consistently, do not mix both.
+### Phase 12 — Settings: preference storage layer ✅ done
+**Files (actual):**
+- `app/src/main/java/com/cobalt/android/util/SettingsRepository.kt` —
+  extended the existing `SharedPreferences`-backed repository (kept
+  consistent with `cobaltInstanceUrl`/`audioOnlyMode`/etc.; no DataStore
+  introduced, per the "pick one approach" instruction) with three new
+  keys: `defaultDownloadFormat`, `downloadLocation`, `themeMode`.
+
+**Naming gap (honest, not fixed this phase):** the spec calls the first
+key "default download resolution." This app's cobalt integration
+(`LinkResolverRepository.ResolvedFormat`, Phase 4) never exposes numeric
+quality tiers — the cobalt API contract this app talks to returns a
+format *type* per option (video / audio / photo), not a resolution
+ladder. `defaultDownloadFormat` persists a `DownloadFormatPreference`
+(ASK/VIDEO/AUDIO) instead, since that's the only real axis of choice
+`ResolveResult.Success` offers. Phase 14 is responsible for reading it
+back into `ResolutionPickerDialog`.
 
 **Definition of Done:**
-1. At minimum: default download resolution, download location, and
-   dark/light/dynamic theme are new persisted keys alongside the existing
-   `cobaltInstanceUrl`.
-2. No UI yet — Phase 13 builds the screen. This phase just makes the values
-   real and persisted.
+1. ✅ `defaultDownloadFormat`, `downloadLocation`, and `themeMode` are new
+   persisted keys alongside the existing `cobaltInstanceUrl`.
+2. ✅ No UI in this phase's own commit beyond what Phase 13 adds on top —
+   values are real and persisted (SharedPreferences, same mechanism as
+   the rest of `SettingsRepository`).
 
 ---
 
