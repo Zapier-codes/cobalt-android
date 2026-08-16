@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000">
 
-    <VideoView
-        android:id="@+id/videoView"
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center"
-        android:scaleType="centerCrop" />
+        app:resize_mode="zoom"
+        app:use_controller="false"
+        app:surface_type="texture_view" />
 
     <!-- Icon rail on the right side -->
     <LinearLayout
@@ -28,11 +31,11 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginBottom="24dp"
-            android:src="@android:drawable/ic_menu_add"
+            android:src="@android:drawable/btn_star_big_off"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Like" />
 
-        <!-- Save button -->
+        <!-- Save/download button -->
         <ImageView
             android:id="@+id/ivSave"
             android:layout_width="48dp"

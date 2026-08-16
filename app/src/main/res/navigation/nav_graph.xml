@@ -12,7 +12,7 @@
 
     <fragment
         android:id="@+id/nav_shorts"
-        android:name="com.cobalt.android.ui.ShortsFragment"
+        android:name="com.cobalt.android.ui.shorts.ShortsFragment"
         android:label="@string/nav_shorts"
         tools:layout="@layout/fragment_shorts" />
 

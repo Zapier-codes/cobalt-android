@@ -51,6 +51,27 @@ dependencies {
     implementation("androidx.navigation:navigation-fragment-ktx:2.7.7")
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
     implementation("androidx.vectordrawable:vectordrawable:1.2.0")
+
+    // --- Phase 2 (Shorts feed) additions ---
+    // ViewPager2 backs the vertical swipeable Shorts feed. This was already
+    // used in fragment_shorts.xml before this phase but the dependency itself
+    // was missing, so the module did not actually compile.
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
+    // Media3/ExoPlayer plays the real per-item video streams (progressive,
+    // HLS and DASH — Innertube/Invidious return a mix of these) in the
+    // TikTok/Shorts-style feed. VideoView (previously in item_short_video.xml)
+    // cannot handle HLS/DASH so it's replaced by androidx.media3.ui.PlayerView.
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+    // NewPipeExtractor is one of the three merged Shorts sources (the other
+    // two — direct Innertube calls and Invidious public instances — use
+    // OkHttp directly and need no extra dependency). NewPipeExtractor needs a
+    // JSON parser (nanojson) and a JS engine for YouTube's cipher (Rhino) as
+    // transitive dependencies, both pulled automatically from its POM.
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.24.6")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
