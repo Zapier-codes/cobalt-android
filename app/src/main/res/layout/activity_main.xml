@@ -6,10 +6,13 @@
     android:layout_height="match_parent"
     android:background="@color/cobalt_background">
 
-    <com.cobalt.android.CobaltWebView
-        android:id="@+id/webView"
+    <fragment
+        android:id="@+id/navHost"
+        android:name="androidx.navigation.fragment.NavHostFragment"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        app:navGraph="@navigation/nav_graph"
+        tools:layout="@layout/fragment_home" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnSettings"
@@ -62,5 +65,14 @@
             android:fontFamily="@font/ibm_plex_mono_regular" />
 
     </FrameLayout>
+
+    <!-- Bottom navigation component with three tabs: Home, Shorts, Settings -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/navBottom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/bottom_nav_menu" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

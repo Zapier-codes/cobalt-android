@@ -1,0 +1,84 @@
+Read ~/.hermes-pipeline/state.json for your current build phase/checkpoint
+and the architecture_complete flag, and ARCHITECTURE.md's Build Sequencing
+section for the full list of screens/functionality required. Then:
+
+MODE CHECK: if architecture_complete is false or missing, you are in BUILD
+MODE (steps B1-B4 below). Do NOT run any `gh run list` / `gh run view` / CI
+check of any kind, and do NOT look at build/CI errors, in BUILD MODE — CI
+health is irrelevant until every screen and every piece of functionality in
+ARCHITECTURE.md exists. If architecture_complete is true, you are in
+MAINTAIN MODE (steps M1-M3 below).
+
+NOTE ON state.json: ~/.hermes-pipeline/state.json lives OUTSIDE the git repo
+(it is the pipeline's own tracking file, not app source). It is NEVER
+git-added, committed, or pushed — only written directly to disk. The
+commit-per-action rule below (B2) applies ONLY to files inside the repo
+(~/projects/vid/cobalt-android/...). Do not attempt `git add` on state.json,
+and do not spend time reasoning about how to commit it — just write it with
+write_file/patch as the final step and move on.
+
+--- BUILD MODE (architecture_complete: false) ---
+B1. Identify the next incomplete screen or piece of functionality per
+    ARCHITECTURE.md's Build Sequencing section, in order. Pick exactly ONE
+    small, bounded unit of work toward it — one new file, or one focused
+    edit to one existing file. Do not attempt a whole screen/phase in one
+    cycle; take the first bounded piece of it and leave the rest for a
+    future cycle.
+    Before writing to ANY existing file (not creating new), you must have
+    read that exact file earlier in this same cycle. Never modify a file
+    you have not just read in this cycle. In particular, do not touch
+    app/src/main/res/drawable/bg_fab.xml unless the current step is
+    specifically about the FAB button — this file has been accidentally
+    overwritten by unrelated icon-creation work twice before; if you are
+    about to write an icon/drawable file, stop and double check the exact
+    target filename matches the icon you intend to create.
+B2. Immediately after your write_file/patch call succeeds on a file INSIDE
+    the repo, your very next tool call must be `git add <that file>`, `git
+    commit -m "<short description>"`, `git push`. Do this before writing or
+    editing any other file. Do not batch multiple writes and commit once at
+    the end. This rule does NOT apply to ~/.hermes-pipeline/state.json —
+    see the note above.
+B3. Check ARCHITECTURE.md's Build Sequencing section against what has now
+    been implemented (use `find`/`grep`/`terminal`, not search_files, which
+    is broken in this environment — see side-note below). If, and only if,
+    every screen and every piece of functionality listed is now present in
+    the codebase, set architecture_complete to true in the state.json write
+    in step B4. Otherwise leave it false. Do not set it true speculatively —
+    verify by actually checking the repo contents against the spec.
+B4. Your LAST tool call this cycle, no exceptions, must be a write_file (or
+    patch) overwriting ~/.hermes-pipeline/state.json with: current_phase,
+    last_completed_step, last_commit_sha, architecture_complete (per B3),
+    cycle_count+1, last_updated. For last_updated, run `date -u
+    +%Y-%m-%dT%H:%M:%SZ` via terminal first and use its real output — never
+    write a placeholder, guess, or partial timestamp like "2026-08-16T?".
+    last_ci_run_id and last_ci_conclusion are not touched in BUILD MODE —
+    leave them as-is. Do NOT git add/commit/push this file (see note above).
+    Do not describe this update in prose instead of doing it — if your
+    final response does not contain a write_file/patch call targeting
+    state.json, you have not completed the cycle.
+
+--- MAINTAIN MODE (architecture_complete: true) ---
+M1. Run `gh run list --limit 1 --json databaseId,conclusion,status --branch
+    master`.
+M2. If in_progress/queued: do nothing further, skip to M3. If failure: run
+    `gh run view <id> --log-failed`, diagnose, fix minimally, commit, push
+    (commit+push immediately per rule B2 above, same discipline applies).
+    If success: nothing further needed unless you're doing planned
+    maintenance/improvement work — do not silently expand scope back into
+    new features without being told to.
+M3. Your LAST tool call, no exceptions, must be a write_file (or patch)
+    overwriting ~/.hermes-pipeline/state.json with current_phase,
+    last_completed_step, last_commit_sha, last_ci_run_id,
+    last_ci_conclusion, cycle_count+1, last_updated (get the real value via
+    `date -u +%Y-%m-%dT%H:%M:%SZ`, never a placeholder). Do NOT git
+    add/commit/push this file. Same "no prose instead of the tool call"
+    rule as B4.
+
+Side-note: `search_files` has repeatedly returned "Path not found" for files
+that plainly exist in this environment. Use `terminal find` / `terminal
+grep` instead.
+
+FINAL: after the state.json write succeeds, read state.json back to confirm
+the values landed correctly (including a real last_updated timestamp), then
+report a one-line summary of what you did and whether you're still in BUILD
+MODE or just switched to MAINTAIN MODE.

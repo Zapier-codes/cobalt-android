@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Cobalt</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_shorts">Shorts</string>
+    <string name="nav_settings">Settings</string>
     <string name="download_from_clipboard">download from clipboard?</string>
     <string name="not_a_supported_link">that doesn\'t look like a supported link</string>
     <string name="merging_locally">merging locally — may take a moment</string>

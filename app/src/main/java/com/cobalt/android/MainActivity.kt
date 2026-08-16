@@ -15,7 +15,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
-import com.cobalt.android.databinding.ActivityMainBinding
+import androidx.navigation.fragment.findNavController
 import com.cobalt.android.download.DownloadService
 import com.cobalt.android.ui.DownloadQueueSheet
 import com.cobalt.android.ui.DownloadQueueViewModel
@@ -45,7 +45,9 @@ class MainActivity : AppCompatActivity(), CobaltWebView.Listener {
 
         settings = SettingsRepository(this)
 
-        setupWebView()
+        // Set up navigation for bottom navigation bar
+        findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.navBottom)
+            .setupWithNavController(findNavController(R.id.navHost))
         setupFab()
         setupSettingsButton()
         handleFirstLaunch()
