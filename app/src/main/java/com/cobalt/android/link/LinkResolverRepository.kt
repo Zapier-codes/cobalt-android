@@ -1,6 +1,8 @@
 package com.cobalt.android.link
 
 import android.content.Context
+import com.cobalt.android.download.DownloadDatabase
+import com.cobalt.android.db.entities.ResolutionCacheEntity
 import com.cobalt.android.util.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
@@ -33,10 +36,15 @@ import java.io.IOException
  * single-direct-link case ("redirect" on older instances, "tunnel" on
  * newer ones) — all four are handled identically here since there's no way
  * to know in advance which generation a given `cobaltInstanceUrl` is
- * running. Not verified against a live instance this session (no network
- * egress to arbitrary hosts in this sandbox) — see HANDOVER.md.
+ * running.
+ *
+ * Phase 5: reads/writes through `ResolutionCacheDao` so a link resolved
+ * recently doesn't re-hit the network. Formats can be short-lived signed
+ * URLs, so the read-freshness window is intentionally short
+ * (CACHE_FRESHNESS_MILLIS) — much shorter than the row-eviction window
+ * (CACHE_EVICTION_MILLIS), which just bounds table growth.
  */
-class LinkResolverRepository(context: Context) {
+class LinkResolverRepository(private val context: Context) {
 
     /** One downloadable option. Phase 6's picker will list these; Phase 6
      * also drives `DownloadService.startHttps(...)` from `url`/`filename`/
@@ -59,7 +67,35 @@ class LinkResolverRepository(context: Context) {
     private val settings = SettingsRepository(context)
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
+    companion object {
+        /** Cache hits only within this window — resolved URLs can be short-lived signed links. */
+        private const val CACHE_FRESHNESS_MILLIS = 5 * 60 * 1000L
+        /** Rows older than this get swept regardless of freshness, so the table doesn't grow forever. */
+        private const val CACHE_EVICTION_MILLIS = 24 * 60 * 60 * 1000L
+    }
+
     suspend fun resolve(url: String): ResolveResult = withContext(Dispatchers.IO) {
+        val cacheDao = DownloadDatabase.getInstance(context).resolutionCacheDao()
+        cacheDao.deleteOlderThan(System.currentTimeMillis() - CACHE_EVICTION_MILLIS)
+
+        val cached = cacheDao.getByUrl(url)
+        if (cached != null && System.currentTimeMillis() - cached.resolvedAtMillis < CACHE_FRESHNESS_MILLIS) {
+            val formats = deserializeFormats(cached.formatsJson)
+            if (formats.isNotEmpty()) {
+                return@withContext ResolveResult.Success(url, formats)
+            }
+        }
+
+        val result = resolveFromNetwork(url)
+        if (result is ResolveResult.Success) {
+            cacheDao.upsert(
+                ResolutionCacheEntity(originalUrl = url, formatsJson = serializeFormats(result.formats))
+            )
+        }
+        result
+    }
+
+    private suspend fun resolveFromNetwork(url: String): ResolveResult {
         val instance = settings.cobaltInstanceUrl.trimEnd('/')
         val requestBody = JSONObject().put("url", url).toString().toRequestBody(jsonMedia)
         val request = Request.Builder()
@@ -71,31 +107,31 @@ class LinkResolverRepository(context: Context) {
         val response = try {
             client.newCall(request).execute()
         } catch (e: IOException) {
-            return@withContext ResolveResult.Error(
+            return ResolveResult.Error(
                 "Couldn't reach the cobalt instance ($instance). Check your connection or the instance URL in Settings."
             )
         }
 
-        response.use { resp ->
+        return response.use { resp ->
             val bodyString = try {
                 resp.body?.string()
             } catch (e: IOException) {
                 null
             }
             if (bodyString.isNullOrBlank()) {
-                return@withContext ResolveResult.Error("The cobalt instance returned an empty response.")
+                return@use ResolveResult.Error("The cobalt instance returned an empty response.")
             }
 
             val json = try {
                 JSONObject(bodyString)
             } catch (e: JSONException) {
-                return@withContext ResolveResult.Error("The cobalt instance returned an unreadable response.")
+                return@use ResolveResult.Error("The cobalt instance returned an unreadable response.")
             }
 
             if (!resp.isSuccessful) {
                 val code = json.optJSONObject("error")?.optString("code")
                 val message = if (!code.isNullOrBlank()) code else "The cobalt instance rejected this link (HTTP ${resp.code})."
-                return@withContext ResolveResult.Error(message)
+                return@use ResolveResult.Error(message)
             }
 
             parseBody(url, json)
@@ -188,5 +224,36 @@ class LinkResolverRepository(context: Context) {
         "mp3" -> "audio/mpeg"
         "m4a" -> "audio/mp4"
         else -> "application/octet-stream"
+    }
+
+    private fun serializeFormats(formats: List<ResolvedFormat>): String {
+        val array = JSONArray()
+        formats.forEach { f ->
+            array.put(JSONObject().apply {
+                put("url", f.url)
+                put("filename", f.filename)
+                put("mimeType", f.mimeType)
+                put("label", f.label)
+            })
+        }
+        return array.toString()
+    }
+
+    private fun deserializeFormats(json: String): List<ResolvedFormat> {
+        return try {
+            val array = JSONArray(json)
+            (0 until array.length()).mapNotNull { i ->
+                val obj = array.optJSONObject(i) ?: return@mapNotNull null
+                val url = obj.optString("url")
+                if (url.isBlank()) null else ResolvedFormat(
+                    url = url,
+                    filename = obj.optString("filename"),
+                    mimeType = obj.optString("mimeType"),
+                    label = obj.optString("label")
+                )
+            }
+        } catch (e: JSONException) {
+            emptyList()
+        }
     }
 }
