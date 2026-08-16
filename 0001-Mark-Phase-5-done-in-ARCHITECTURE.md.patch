@@ -1,0 +1,86 @@
+From 985bdd8641547a7632fc7f69cb26174c7b20e2fe Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.local>
+Date: Sun, 16 Aug 2026 19:52:59 +0000
+Subject: [PATCH 1/3] Mark Phase 5 done in ARCHITECTURE.md
+
+---
+ ARCHITECTURE.md | 53 +++++++++++++++++++++++++++++++++----------------
+ 1 file changed, 36 insertions(+), 17 deletions(-)
+
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index 7c27a0c..96c6c22 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -417,7 +417,17 @@ have been a second unrelated change bundled into this phase.
+ 
+ ---
+ 
+-### Phase 5 — ResolutionCacheEntity (the download engine itself already exists)
++### Phase 5 — ResolutionCacheEntity (the download engine itself already exists) ✅ done
++Landed across three commits after a merge conflict from two Hermes
++sessions building this phase independently: the entity/DAO were
++consolidated into one implementation at the spec'd package
++(`db.entities`/`db`, formats-list + freshness design, not the earlier
++single-URL stub), `DownloadDatabase.kt`'s missing `Context` import was
++fixed, and schema bumped 1→2 with a real `Migration`.
++`LinkResolverRepository.resolve()` now reads the cache first (5-minute
++freshness window — resolved URLs can be short-lived signed links) and
++writes through on every successful resolve, satisfying DoD item 2.
++
+ **Do NOT build a new download engine.** `DownloadRecord`/`DownloadDao`/
+ `DownloadRepository`/`DownloadService`/`RetryDownloadWorker`/
+ `NotificationHelper`/`MediaStoreWriter` already implement queueing,
+@@ -443,25 +453,34 @@ re-resolve on every open.
+ 
+ ---
+ 
+-### Phase 6 — Resolution picker UI + wiring to the existing download engine
+-**Files:**
++### Phase 6 — Resolution picker UI + wiring to the existing download engine ✅ done
++**Files (actual — matches spec):**
+ - `app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt`
+-  — bottom sheet listing resolutions/formats from `ResolutionCacheEntity`/
+-  `LinkResolverRepository` (Phases 4–5), matching the Vidmate-style "pick
+-  quality before download" step.
++  — bottom sheet listing resolutions/formats from `HomeViewModel.resolveResult`
++  (backed by Phases 4–5), matching the Vidmate-style "pick quality before
++  download" step. Reads the ViewModel directly (activity-scoped, shared with
++  `HomeFragment`) rather than passing `ResolvedFormat` through Bundle
++  arguments, so it didn't need to become Parcelable for a same-process hand-off.
++- `app/src/main/java/com/cobalt/android/ui/downloads/ResolutionFormatAdapter.kt`
++  — `ListAdapter`/`DiffUtil`, same pattern as `DownloadAdapter`.
++- `app/src/main/res/layout/sheet_resolution_picker.xml`,
++  `item_resolution_format.xml` — styled to match `sheet_download_queue.xml`/
++  `item_download.xml` (same colors, IBM Plex Mono font).
++- `HomeFragment` switched from `viewModels()` to `activityViewModels()` so the
++  dialog (shown via `childFragmentManager`) shares the same `HomeViewModel`
++  instance instead of getting its own.
+ 
+ **Definition of Done:**
+-1. `ResolutionPickerDialog` is actually shown after `LinkResolverRepository`
+-   resolves a link (Phase 3 → 4 → 6 wiring is real end-to-end, not
+-   aspirational).
+-2. Confirming a resolution calls `DownloadService.startHttps(...)` with the
+-   chosen format's direct URL/filename/mimeType — reusing the existing
+-   service, not a new worker. (This is the exact same call Phase 2's Shorts
+-   "save" action already uses — confirm both paths converge on one
+-   `DownloadService`, not two.)
+-3. A notification with progress appears while a download is active — this
+-   already happens via `NotificationHelper` inside `DownloadService`; this
+-   step just confirms nothing broke that path.
++1. ✅ `ResolutionPickerDialog` is shown by `HomeFragment` observing
++   `resolveResult`, immediately after `LinkResolverRepository` resolves a
++   link — Phase 3 → 4 → 6 wiring is real end-to-end.
++2. ✅ Confirming a resolution calls `DownloadService.startHttps(...)` with the
++   chosen format's direct URL/filename/mimeType — the exact same call
++   `ShortsViewModel.downloadToDevice()` already uses; both paths converge on
++   one `DownloadService`, not two.
++3. ✅ Notification-on-progress path untouched — still driven entirely by
++   `NotificationHelper` inside `DownloadService`, nothing in this phase
++   touches that code.
+ 
+ ---
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,282 @@
+From 4e1482c44958c423619aa8fbb334e7463ace1a06 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.local>
+Date: Sun, 16 Aug 2026 20:10:44 +0000
+Subject: [PATCH 04/11] Phase 8: tap-to-play video player dialog, wired to
+ DownloadAdapter/DownloadQueueSheet
+
+- Add VideoPlayerDialogFragment: full-screen DialogFragment owning one
+  ExoPlayer for one local file, reusing the Media3 stack ShortsFragment
+  (Phase 2) already depends on instead of a second video library.
+- Add dialog_video_player.xml (PlayerView with controller + close button)
+  and Theme.Cobalt.FullScreenDialog.
+- DownloadAdapter: completed rows with mimeType video/* now route
+  btnOpen to the in-app player instead of always ACTION_VIEW; non-video
+  completed downloads keep the pre-existing system hand-off.
+- DownloadQueueSheet: supplies the onPlay callback and shows the dialog
+  via parentFragmentManager.
+- Lifecycle: pause() on onPause, release() on onDestroyView, matching
+  ShortsFragment's discipline (full hardening pass is Phase 18).
+---
+ .../com/cobalt/android/ui/DownloadAdapter.kt  |  13 +-
+ .../cobalt/android/ui/DownloadQueueSheet.kt   |   6 +-
+ .../android/ui/VideoPlayerDialogFragment.kt   | 115 ++++++++++++++++++
+ .../main/res/layout/dialog_video_player.xml   |  39 ++++++
+ app/src/main/res/values/strings.xml           |   2 +
+ app/src/main/res/values/themes.xml            |  12 ++
+ 6 files changed, 184 insertions(+), 3 deletions(-)
+ create mode 100644 app/src/main/java/com/cobalt/android/ui/VideoPlayerDialogFragment.kt
+ create mode 100644 app/src/main/res/layout/dialog_video_player.xml
+
+diff --git a/app/src/main/java/com/cobalt/android/ui/DownloadAdapter.kt b/app/src/main/java/com/cobalt/android/ui/DownloadAdapter.kt
+index 0dfed19..feb4c7d 100644
+--- a/app/src/main/java/com/cobalt/android/ui/DownloadAdapter.kt
++++ b/app/src/main/java/com/cobalt/android/ui/DownloadAdapter.kt
+@@ -14,7 +14,8 @@ import com.cobalt.android.download.DownloadStatus
+ 
+ class DownloadAdapter(
+     private val onRetry: (DownloadRecord) -> Unit,
+-    private val onCancel: (DownloadRecord) -> Unit
++    private val onCancel: (DownloadRecord) -> Unit,
++    private val onPlay: (DownloadRecord) -> Unit
+ ) : ListAdapter<DownloadRecord, DownloadAdapter.VH>(DIFF) {
+ 
+     inner class VH(val binding: ItemDownloadBinding) : RecyclerView.ViewHolder(binding.root)
+@@ -61,7 +62,15 @@ class DownloadAdapter(
+                     val mb = if (record.totalBytes > 0) "%.1f MB · ".format(record.totalBytes / 1_048_576.0) else ""
+                     tvStatus.text = "${mb}saved"
+                     btnOpen.visibility = View.VISIBLE
+-                    btnOpen.setOnClickListener { openFile(holder.binding.root.context, record) }
++                    btnOpen.setOnClickListener {
++                        if (record.mimeType.startsWith("video/") && record.mediaStoreUriString.isNotBlank()) {
++                            // Phase 8: play locally via the in-app player instead of
++                            // handing off to whatever system app claims the MIME type.
++                            onPlay(record)
++                        } else {
++                            openFile(holder.binding.root.context, record)
++                        }
++                    }
+                 }
+                 DownloadStatus.FAILED -> {
+                     tvStatus.text = "failed"
+diff --git a/app/src/main/java/com/cobalt/android/ui/DownloadQueueSheet.kt b/app/src/main/java/com/cobalt/android/ui/DownloadQueueSheet.kt
+index 402a64b..7fcfc1c 100644
+--- a/app/src/main/java/com/cobalt/android/ui/DownloadQueueSheet.kt
++++ b/app/src/main/java/com/cobalt/android/ui/DownloadQueueSheet.kt
+@@ -32,7 +32,11 @@ class DownloadQueueSheet : BottomSheetDialogFragment() {
+     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+         adapter = DownloadAdapter(
+             onRetry = { record -> onRetry?.invoke(record) },
+-            onCancel = { /* future: cancel in-progress download */ }
++            onCancel = { /* future: cancel in-progress download */ },
++            onPlay = { record ->
++                VideoPlayerDialogFragment.newInstance(record.mediaStoreUriString)
++                    .show(parentFragmentManager, VideoPlayerDialogFragment.TAG)
++            }
+         )
+         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+         binding.recyclerView.adapter = adapter
+diff --git a/app/src/main/java/com/cobalt/android/ui/VideoPlayerDialogFragment.kt b/app/src/main/java/com/cobalt/android/ui/VideoPlayerDialogFragment.kt
+new file mode 100644
+index 0000000..27ecb3a
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/ui/VideoPlayerDialogFragment.kt
+@@ -0,0 +1,115 @@
++package com.cobalt.android.ui
++
++import android.app.Dialog
++import android.net.Uri
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import androidx.fragment.app.DialogFragment
++import androidx.media3.common.MediaItem
++import androidx.media3.common.PlaybackException
++import androidx.media3.common.Player
++import androidx.media3.exoplayer.ExoPlayer
++import com.cobalt.android.R
++import com.cobalt.android.databinding.DialogVideoPlayerBinding
++
++/**
++ * Phase 8 — tap-to-play for completed downloads.
++ *
++ * Reuses the same `androidx.media3`/`ExoPlayer` stack `ShortsFragment` already
++ * depends on (Phase 2) rather than a second video-playback library, per
++ * ARCHITECTURE.md's "Unified enhancement" rule. Unlike `ShortsFragment`'s
++ * single player shared across a `ViewPager2` of many items, this dialog owns
++ * exactly one player for exactly one local file, so the lifecycle is simpler:
++ * built in `onViewCreated`, paused in `onPause` (backgrounding), released in
++ * `onDestroyView` (screen exit) — matching Phase 8's Definition of Done and
++ * the same discipline `ShortsFragment` uses.
++ *
++ * Plays from a `content://` MediaStore URI (`DownloadRecord.mediaStoreUriString`
++ * from Phase 7's completed-download rows) — a local file, not a network
++ * stream, so no HLS/DASH MIME-type branching is needed here the way
++ * `ShortsFragment.playAt()` needs for remote streams.
++ */
++class VideoPlayerDialogFragment : DialogFragment() {
++
++    private var _binding: DialogVideoPlayerBinding? = null
++    private val binding get() = _binding!!
++    private var player: ExoPlayer? = null
++
++    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
++        val dialog = Dialog(requireContext(), R.style.Theme_Cobalt_FullScreenDialog)
++        dialog.window?.setBackgroundDrawableResource(android.R.color.black)
++        return dialog
++    }
++
++    override fun onStart() {
++        super.onStart()
++        // A plain Dialog wraps its content by default even under a fullscreen
++        // theme — force it to actually fill the screen.
++        dialog?.window?.setLayout(
++            ViewGroup.LayoutParams.MATCH_PARENT,
++            ViewGroup.LayoutParams.MATCH_PARENT
++        )
++    }
++
++    override fun onCreateView(
++        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
++    ): View {
++        _binding = DialogVideoPlayerBinding.inflate(inflater, container, false)
++        return binding.root
++    }
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        super.onViewCreated(view, savedInstanceState)
++        binding.btnClose.setOnClickListener { dismiss() }
++
++        val uriString = requireArguments().getString(ARG_URI).orEmpty()
++        if (uriString.isBlank()) {
++            showError()
++            return
++        }
++
++        val exo = ExoPlayer.Builder(requireContext()).build()
++        player = exo
++        binding.playerView.player = exo
++
++        exo.addListener(object : Player.Listener {
++            override fun onPlayerError(error: PlaybackException) {
++                showError()
++            }
++        })
++
++        exo.setMediaItem(MediaItem.fromUri(Uri.parse(uriString)))
++        exo.prepare()
++        exo.playWhenReady = true
++    }
++
++    private fun showError() {
++        binding.tvPlayerError.text = getString(R.string.player_error_unplayable)
++        binding.tvPlayerError.visibility = View.VISIBLE
++        binding.playerView.visibility = View.GONE
++    }
++
++    override fun onPause() {
++        super.onPause()
++        player?.pause()
++    }
++
++    override fun onDestroyView() {
++        super.onDestroyView()
++        player?.release()
++        player = null
++        _binding = null
++    }
++
++    companion object {
++        const val TAG = "VideoPlayerDialogFragment"
++        private const val ARG_URI = "arg_uri"
++
++        fun newInstance(mediaStoreUriString: String): VideoPlayerDialogFragment =
++            VideoPlayerDialogFragment().apply {
++                arguments = Bundle().apply { putString(ARG_URI, mediaStoreUriString) }
++            }
++    }
++}
+diff --git a/app/src/main/res/layout/dialog_video_player.xml b/app/src/main/res/layout/dialog_video_player.xml
+new file mode 100644
+index 0000000..a81ca83
+--- /dev/null
++++ b/app/src/main/res/layout/dialog_video_player.xml
+@@ -0,0 +1,39 @@
++<?xml version="1.0" encoding="utf-8"?>
++<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:background="@color/cobalt_background">
++
++    <androidx.media3.ui.PlayerView
++        android:id="@+id/playerView"
++        android:layout_width="match_parent"
++        android:layout_height="match_parent"
++        android:layout_gravity="center"
++        app:resize_mode="fit"
++        app:use_controller="true"
++        app:show_buffering="when_playing"
++        app:surface_type="texture_view" />
++
++    <ImageView
++        android:id="@+id/btnClose"
++        android:layout_width="48dp"
++        android:layout_height="48dp"
++        android:layout_gravity="top|start"
++        android:layout_margin="8dp"
++        android:padding="10dp"
++        android:src="@android:drawable/ic_menu_close_clear_cancel"
++        android:background="?attr/selectableItemBackgroundBorderless"
++        android:contentDescription="@string/action_close" />
++
++    <TextView
++        android:id="@+id/tvPlayerError"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_gravity="center"
++        android:textColor="@color/cobalt_error_red"
++        android:fontFamily="@font/ibm_plex_mono_regular"
++        android:textSize="14sp"
++        android:visibility="gone" />
++
++</FrameLayout>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 74725a4..81246fa 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -18,6 +18,8 @@
+     <string name="action_share">share</string>
+     <string name="action_retry">retry</string>
+     <string name="action_cancel">cancel</string>
++    <string name="action_close">close</string>
++    <string name="player_error_unplayable">couldn\'t play this file</string>
+     <string name="settings_cobalt_url">cobalt instance</string>
+     <string name="settings_audio_only">audio-only mode</string>
+     <string name="settings_clipboard_trigger">clipboard trigger</string>
+diff --git a/app/src/main/res/values/themes.xml b/app/src/main/res/values/themes.xml
+index 1744fb4..8e16f20 100644
+--- a/app/src/main/res/values/themes.xml
++++ b/app/src/main/res/values/themes.xml
+@@ -17,6 +17,18 @@
+         <item name="colorSurface">@color/cobalt_surface_sidebar</item>
+     </style>
+ 
++    <!-- Phase 8: full-bleed, no-title dialog theme for VideoPlayerDialogFragment,
++         edge-to-edge like the Shorts player it reuses ExoPlayer/Media3 from. -->
++    <style name="Theme.Cobalt.FullScreenDialog" parent="Theme.Material3.Dark">
++        <item name="android:windowNoTitle">true</item>
++        <item name="android:windowFullscreen">true</item>
++        <item name="android:windowIsFloating">false</item>
++        <item name="android:windowBackground">@color/cobalt_background</item>
++        <item name="android:statusBarColor">@android:color/black</item>
++        <item name="android:navigationBarColor">@android:color/black</item>
++        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
++    </style>
++
+     <style name="TextAppearance.Cobalt.Mono" parent="TextAppearance.Material3.BodyMedium">
+         <item name="fontFamily">@font/ibm_plex_mono_regular</item>
+         <item name="android:fontFamily">@font/ibm_plex_mono_regular</item>
+-- 
+2.43.0
+

@@ -1,0 +1,233 @@
+From eeebe8d69304c937c8d2538fadcf2d2ce3592804 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.local>
+Date: Sun, 16 Aug 2026 20:18:03 +0000
+Subject: [PATCH 06/11] Phase 9: HistoryEntity + LikedEntity + DAOs, wired into
+ DownloadDatabase (v2->v3)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- HistoryEntity: one table covering both SHORT_WATCH and DOWNLOAD rows,
+  so Phase 11's timeline doesn't need to merge two tables.
+- LikedEntity: keyed by the same videoId ShortItem/ShortsCacheEntity use,
+  the durable counterpart to Phase 2's cache-local isLiked flag.
+- HistoryDao/LikedDao under db/daos/, per spec.
+- Extended DownloadDatabase (not ShortsDatabase, not a new database):
+  history/likes are permanent user data, same durability class as
+  DownloadRecord/ResolutionCacheEntity already there, unlike
+  ShortsDatabase which is a deliberately evictable cache. Real Migration
+  2->3 creating both tables.
+- Data-layer only, no UI or write-side wiring yet — that's Phase 10.
+---
+ .../com/cobalt/android/db/daos/HistoryDao.kt  | 20 ++++++++
+ .../com/cobalt/android/db/daos/LikedDao.kt    | 23 +++++++++
+ .../android/db/entities/HistoryEntity.kt      | 30 +++++++++++
+ .../cobalt/android/db/entities/LikedEntity.kt | 21 ++++++++
+ .../android/download/DownloadDatabase.kt      | 50 ++++++++++++++++++-
+ 5 files changed, 142 insertions(+), 2 deletions(-)
+ create mode 100644 app/src/main/java/com/cobalt/android/db/daos/HistoryDao.kt
+ create mode 100644 app/src/main/java/com/cobalt/android/db/daos/LikedDao.kt
+ create mode 100644 app/src/main/java/com/cobalt/android/db/entities/HistoryEntity.kt
+ create mode 100644 app/src/main/java/com/cobalt/android/db/entities/LikedEntity.kt
+
+diff --git a/app/src/main/java/com/cobalt/android/db/daos/HistoryDao.kt b/app/src/main/java/com/cobalt/android/db/daos/HistoryDao.kt
+new file mode 100644
+index 0000000..c9e2804
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/db/daos/HistoryDao.kt
+@@ -0,0 +1,20 @@
++package com.cobalt.android.db.daos
++
++import androidx.lifecycle.LiveData
++import androidx.room.Dao
++import androidx.room.Insert
++import androidx.room.OnConflictStrategy
++import androidx.room.Query
++import com.cobalt.android.db.entities.HistoryEntity
++
++@Dao
++interface HistoryDao {
++    @Insert(onConflict = OnConflictStrategy.REPLACE)
++    suspend fun insert(entity: HistoryEntity): Long
++
++    @Query("SELECT * FROM history ORDER BY timestamp DESC")
++    fun getAllLive(): LiveData<List<HistoryEntity>>
++
++    @Query("DELETE FROM history")
++    suspend fun clearAll()
++}
+diff --git a/app/src/main/java/com/cobalt/android/db/daos/LikedDao.kt b/app/src/main/java/com/cobalt/android/db/daos/LikedDao.kt
+new file mode 100644
+index 0000000..329e8fc
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/db/daos/LikedDao.kt
+@@ -0,0 +1,23 @@
++package com.cobalt.android.db.daos
++
++import androidx.lifecycle.LiveData
++import androidx.room.Dao
++import androidx.room.Insert
++import androidx.room.OnConflictStrategy
++import androidx.room.Query
++import com.cobalt.android.db.entities.LikedEntity
++
++@Dao
++interface LikedDao {
++    @Insert(onConflict = OnConflictStrategy.REPLACE)
++    suspend fun upsert(entity: LikedEntity)
++
++    @Query("DELETE FROM liked WHERE videoId = :videoId")
++    suspend fun delete(videoId: String)
++
++    @Query("SELECT * FROM liked WHERE videoId = :videoId")
++    suspend fun getByVideoId(videoId: String): LikedEntity?
++
++    @Query("SELECT * FROM liked ORDER BY likedAt DESC")
++    fun getAllLive(): LiveData<List<LikedEntity>>
++}
+diff --git a/app/src/main/java/com/cobalt/android/db/entities/HistoryEntity.kt b/app/src/main/java/com/cobalt/android/db/entities/HistoryEntity.kt
+new file mode 100644
+index 0000000..d1bc3c0
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/db/entities/HistoryEntity.kt
+@@ -0,0 +1,30 @@
++package com.cobalt.android.db.entities
++
++import androidx.room.Entity
++import androidx.room.PrimaryKey
++
++/**
++ * What kind of thing this history row records. History (per Phase 10/11)
++ * covers two distinct surfaces: watching a Shorts item and completing a
++ * download — kept as one table (rather than two) so `HistoryFragment`
++ * (Phase 11) can show one merged, most-recent-first timeline instead of
++ * stitching two queries together.
++ */
++enum class HistoryItemType { SHORT_WATCH, DOWNLOAD }
++
++@Entity(tableName = "history")
++data class HistoryEntity(
++    @PrimaryKey(autoGenerate = true) val id: Long = 0,
++    /** [HistoryItemType.name] — stored as a plain String, same convention
++     *  as `ShortsCacheEntity.streamKind`/`.source`, no TypeConverter needed. */
++    val itemType: String,
++    /** `ShortItem.videoId` for SHORT_WATCH, `DownloadRecord.id.toString()`
++     *  for DOWNLOAD — lets Phase 10/11 join back to the source row if needed. */
++    val refId: String,
++    val title: String,
++    val thumbnailUrl: String = "",
++    /** `ShortItem.watchUrl` for SHORT_WATCH, `DownloadRecord.originalUrl`
++     *  for DOWNLOAD. */
++    val sourceUrl: String = "",
++    val timestamp: Long = System.currentTimeMillis()
++)
+diff --git a/app/src/main/java/com/cobalt/android/db/entities/LikedEntity.kt b/app/src/main/java/com/cobalt/android/db/entities/LikedEntity.kt
+new file mode 100644
+index 0000000..04d8e7c
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/db/entities/LikedEntity.kt
+@@ -0,0 +1,21 @@
++package com.cobalt.android.db.entities
++
++import androidx.room.Entity
++import androidx.room.PrimaryKey
++
++/**
++ * A liked Shorts item, keyed by the same `videoId` `ShortsCacheEntity` and
++ * `ShortItem` use. `ShortsCacheEntity.isLiked` (Phase 2) is a cache-local
++ * flag that gets evicted along with the rest of the cache row — this table
++ * is the durable record, connected in Phase 10 rather than this phase (data-
++ * layer only, per this phase's own scope).
++ */
++@Entity(tableName = "liked")
++data class LikedEntity(
++    @PrimaryKey val videoId: String,
++    val title: String,
++    val authorName: String,
++    val thumbnailUrl: String,
++    val watchUrl: String,
++    val likedAt: Long = System.currentTimeMillis()
++)
+diff --git a/app/src/main/java/com/cobalt/android/download/DownloadDatabase.kt b/app/src/main/java/com/cobalt/android/download/DownloadDatabase.kt
+index b93fa7e..9f6a893 100644
+--- a/app/src/main/java/com/cobalt/android/download/DownloadDatabase.kt
++++ b/app/src/main/java/com/cobalt/android/download/DownloadDatabase.kt
+@@ -8,13 +8,34 @@ import androidx.room.TypeConverters
+ import androidx.room.migration.Migration
+ import androidx.sqlite.db.SupportSQLiteDatabase
+ import com.cobalt.android.db.ResolutionCacheDao
++import com.cobalt.android.db.daos.HistoryDao
++import com.cobalt.android.db.daos.LikedDao
++import com.cobalt.android.db.entities.HistoryEntity
++import com.cobalt.android.db.entities.LikedEntity
+ import com.cobalt.android.db.entities.ResolutionCacheEntity
+ 
+-@Database(entities = [DownloadRecord::class, ResolutionCacheEntity::class], version = 2, exportSchema = false)
++// Phase 9: History/Liked extend this database rather than ShortsDatabase or a
++// new database of their own. ShortsDatabase (Phase 2) is deliberately an
++// evictable *cache* — rows there expire and get dropped. History and likes
++// are permanent user data, the same durability class as `DownloadRecord`
++// and `ResolutionCacheEntity` already living here, so they belong alongside
++// them, not next to data that's designed to be thrown away.
++@Database(
++    entities = [
++        DownloadRecord::class,
++        ResolutionCacheEntity::class,
++        HistoryEntity::class,
++        LikedEntity::class
++    ],
++    version = 3,
++    exportSchema = false
++)
+ @TypeConverters(StatusConverters::class)
+ abstract class DownloadDatabase : RoomDatabase() {
+     abstract fun downloadDao(): DownloadDao
+     abstract fun resolutionCacheDao(): ResolutionCacheDao
++    abstract fun historyDao(): HistoryDao
++    abstract fun likedDao(): LikedDao
+ 
+     companion object {
+         @Volatile private var INSTANCE: DownloadDatabase? = null
+@@ -31,13 +52,38 @@ abstract class DownloadDatabase : RoomDatabase() {
+             }
+         }
+ 
++        private val MIGRATION_2_3 = object : Migration(2, 3) {
++            override fun migrate(db: SupportSQLiteDatabase) {
++                db.execSQL(
++                    "CREATE TABLE IF NOT EXISTS history (" +
++                        "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
++                        "itemType TEXT NOT NULL, " +
++                        "refId TEXT NOT NULL, " +
++                        "title TEXT NOT NULL, " +
++                        "thumbnailUrl TEXT NOT NULL, " +
++                        "sourceUrl TEXT NOT NULL, " +
++                        "timestamp INTEGER NOT NULL)"
++                )
++                db.execSQL(
++                    "CREATE TABLE IF NOT EXISTS liked (" +
++                        "videoId TEXT NOT NULL PRIMARY KEY, " +
++                        "title TEXT NOT NULL, " +
++                        "authorName TEXT NOT NULL, " +
++                        "thumbnailUrl TEXT NOT NULL, " +
++                        "watchUrl TEXT NOT NULL, " +
++                        "likedAt INTEGER NOT NULL)"
++                )
++            }
++        }
++
+         fun getInstance(context: Context): DownloadDatabase =
+             INSTANCE ?: synchronized(this) {
+                 INSTANCE ?: Room.databaseBuilder(
+                     context.applicationContext,
+                     DownloadDatabase::class.java,
+                     "cobalt_downloads.db"
+-                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
++                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
+             }
+     }
+ }
++
+-- 
+2.43.0
+

@@ -1,0 +1,402 @@
+From 55ac5a9f60799777cd74107396e71f63df4c88b0 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.local>
+Date: Sun, 16 Aug 2026 20:24:04 +0000
+Subject: [PATCH 10/11] Phase 11: History & Likes UI screen
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- HistoryFragment: BottomSheetDialogFragment (like DownloadQueueSheet/
+  SettingsSheet, not a nav_graph destination), reachable from a new
+  btnHistory entry in the settings sheet — the entry-point choice this
+  phase's DoD asks to record.
+- HistoryViewModel: maps Phase 9/10's HistoryEntity/LikedEntity rows to
+  a shared HistoryRow display model.
+- HistoryRowAdapter: one ListAdapter reused for both tabs (History:
+  merged SHORT_WATCH+DOWNLOAD per Phase 9's single-table design; Liked:
+  its own tab). Tapping a row opens its source URL in the browser.
+- sheet_history.xml/item_history_row.xml: styled to match
+  sheet_download_queue.xml/item_download.xml.
+- Noted a pre-existing naming ambiguity in ARCHITECTURE.md: the existing
+  btnClearHistory clears a different table (download queue history),
+  unrelated to this screen's History & Likes — left as-is, out of scope
+  for this phase.
+---
+ .../com/cobalt/android/ui/SettingsSheet.kt    |  4 +
+ .../android/ui/history/HistoryFragment.kt     | 80 +++++++++++++++++++
+ .../android/ui/history/HistoryRowAdapter.kt   | 63 +++++++++++++++
+ .../android/ui/history/HistoryViewModel.kt    | 52 ++++++++++++
+ app/src/main/res/layout/item_history_row.xml  | 28 +++++++
+ app/src/main/res/layout/sheet_history.xml     | 48 +++++++++++
+ app/src/main/res/layout/sheet_settings.xml    | 11 +++
+ app/src/main/res/values/strings.xml           |  4 +
+ 8 files changed, 290 insertions(+)
+ create mode 100644 app/src/main/java/com/cobalt/android/ui/history/HistoryFragment.kt
+ create mode 100644 app/src/main/java/com/cobalt/android/ui/history/HistoryRowAdapter.kt
+ create mode 100644 app/src/main/java/com/cobalt/android/ui/history/HistoryViewModel.kt
+ create mode 100644 app/src/main/res/layout/item_history_row.xml
+ create mode 100644 app/src/main/res/layout/sheet_history.xml
+
+diff --git a/app/src/main/java/com/cobalt/android/ui/SettingsSheet.kt b/app/src/main/java/com/cobalt/android/ui/SettingsSheet.kt
+index 253b91e..c36228a 100644
+--- a/app/src/main/java/com/cobalt/android/ui/SettingsSheet.kt
++++ b/app/src/main/java/com/cobalt/android/ui/SettingsSheet.kt
+@@ -9,6 +9,7 @@ import android.view.View
+ import android.view.ViewGroup
+ import androidx.fragment.app.activityViewModels
+ import com.cobalt.android.databinding.SheetSettingsBinding
++import com.cobalt.android.ui.history.HistoryFragment
+ import com.cobalt.android.util.SettingsRepository
+ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+ 
+@@ -48,6 +49,9 @@ class SettingsSheet : BottomSheetDialogFragment() {
+                 }
+             )
+         }
++        binding.btnHistory.setOnClickListener {
++            HistoryFragment.newInstance().show(parentFragmentManager, HistoryFragment.TAG)
++        }
+         binding.btnClearHistory.setOnClickListener {
+             viewModel.clearHistory()
+             dismiss()
+diff --git a/app/src/main/java/com/cobalt/android/ui/history/HistoryFragment.kt b/app/src/main/java/com/cobalt/android/ui/history/HistoryFragment.kt
+new file mode 100644
+index 0000000..0762cc4
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/ui/history/HistoryFragment.kt
+@@ -0,0 +1,80 @@
++package com.cobalt.android.ui.history
++
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import androidx.fragment.app.viewModels
++import androidx.recyclerview.widget.LinearLayoutManager
++import com.cobalt.android.R
++import com.cobalt.android.databinding.SheetHistoryBinding
++import com.google.android.material.bottomsheet.BottomSheetDialogFragment
++import com.google.android.material.tabs.TabLayout
++
++/**
++ * Phase 11 — reachable from the settings sheet (a `btnHistory` entry in
++ * `SettingsSheet`/`sheet_settings.xml`), not a bottom-nav tab or a top-nav
++ * icon — recorded here per this phase's own Definition of Done, matching
++ * the precedent Phase 7 set for `DownloadQueueSheet`'s FAB entry point.
++ * A `BottomSheetDialogFragment` (like `DownloadQueueSheet`/`SettingsSheet`),
++ * not a `nav_graph.xml` destination, despite the "Fragment" name the
++ * original spec gave this file — `BottomSheetDialogFragment` already is a
++ * `Fragment` subtype, and this keeps it consistent with how the other
++ * secondary screens in this app are shown.
++ */
++class HistoryFragment : BottomSheetDialogFragment() {
++
++    private var _binding: SheetHistoryBinding? = null
++    private val binding get() = _binding!!
++    private val viewModel: HistoryViewModel by viewModels()
++    private lateinit var adapter: HistoryRowAdapter
++
++    override fun onCreateView(
++        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
++    ): View {
++        _binding = SheetHistoryBinding.inflate(inflater, container, false)
++        return binding.root
++    }
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        adapter = HistoryRowAdapter(onClick = { row -> openInBrowser(requireContext(), row) })
++        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
++        binding.recyclerView.adapter = adapter
++
++        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(getString(R.string.tab_history)))
++        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(getString(R.string.tab_liked)))
++
++        binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
++            override fun onTabSelected(tab: TabLayout.Tab) = updateList(tab.position == 0)
++            override fun onTabUnselected(tab: TabLayout.Tab) {}
++            override fun onTabReselected(tab: TabLayout.Tab) {}
++        })
++
++        viewModel.historyRows.observe(viewLifecycleOwner) { updateList(binding.tabLayout.selectedTabPosition == 0) }
++        viewModel.likedRows.observe(viewLifecycleOwner) { updateList(binding.tabLayout.selectedTabPosition == 0) }
++    }
++
++    private fun updateList(historyTab: Boolean) {
++        val list = if (historyTab) {
++            viewModel.historyRows.value.orEmpty()
++        } else {
++            viewModel.likedRows.value.orEmpty()
++        }
++        adapter.submitList(list)
++        binding.tvEmpty.text = getString(
++            if (historyTab) R.string.no_history_yet else R.string.no_liked_yet
++        )
++        binding.tvEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
++        binding.recyclerView.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
++    }
++
++    override fun onDestroyView() {
++        super.onDestroyView()
++        _binding = null
++    }
++
++    companion object {
++        const val TAG = "HistoryFragment"
++        fun newInstance() = HistoryFragment()
++    }
++}
+diff --git a/app/src/main/java/com/cobalt/android/ui/history/HistoryRowAdapter.kt b/app/src/main/java/com/cobalt/android/ui/history/HistoryRowAdapter.kt
+new file mode 100644
+index 0000000..7093051
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/ui/history/HistoryRowAdapter.kt
+@@ -0,0 +1,63 @@
++package com.cobalt.android.ui.history
++
++import android.content.Intent
++import android.net.Uri
++import android.view.LayoutInflater
++import android.view.ViewGroup
++import androidx.recyclerview.widget.DiffUtil
++import androidx.recyclerview.widget.ListAdapter
++import androidx.recyclerview.widget.RecyclerView
++import com.cobalt.android.databinding.ItemHistoryRowBinding
++import java.text.DateFormat
++import java.util.Date
++
++/**
++ * One displayable row, mapped from either a `HistoryEntity` or a
++ * `LikedEntity` by `HistoryViewModel` — keeps this adapter from needing to
++ * know about both entity types itself.
++ */
++data class HistoryRow(
++    val id: String,
++    val title: String,
++    val subtitle: String,
++    val sourceUrl: String
++)
++
++class HistoryRowAdapter(
++    private val onClick: (HistoryRow) -> Unit
++) : ListAdapter<HistoryRow, HistoryRowAdapter.VH>(DIFF) {
++
++    inner class VH(val binding: ItemHistoryRowBinding) : RecyclerView.ViewHolder(binding.root)
++
++    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
++        VH(ItemHistoryRowBinding.inflate(LayoutInflater.from(parent.context), parent, false))
++
++    override fun onBindViewHolder(holder: VH, position: Int) {
++        val row = getItem(position)
++        holder.binding.tvTitle.text = row.title
++        holder.binding.tvSubtitle.text = row.subtitle
++        holder.binding.root.setOnClickListener { onClick(row) }
++    }
++
++    companion object {
++        val DIFF = object : DiffUtil.ItemCallback<HistoryRow>() {
++            override fun areItemsTheSame(a: HistoryRow, b: HistoryRow) = a.id == b.id
++            override fun areContentsTheSame(a: HistoryRow, b: HistoryRow) = a == b
++        }
++
++        fun formatTimestamp(millis: Long): String =
++            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(millis))
++    }
++}
++
++/** Opens [row]'s source link in the browser — same affordance as `DownloadAdapter.openFile`. */
++fun openInBrowser(context: android.content.Context, row: HistoryRow) {
++    if (row.sourceUrl.isBlank()) return
++    try {
++        context.startActivity(
++            Intent(Intent.ACTION_VIEW, Uri.parse(row.sourceUrl)).apply {
++                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++            }
++        )
++    } catch (e: Exception) { /* no app to open this URL */ }
++}
+diff --git a/app/src/main/java/com/cobalt/android/ui/history/HistoryViewModel.kt b/app/src/main/java/com/cobalt/android/ui/history/HistoryViewModel.kt
+new file mode 100644
+index 0000000..909f9ea
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/ui/history/HistoryViewModel.kt
+@@ -0,0 +1,52 @@
++package com.cobalt.android.ui.history
++
++import android.app.Application
++import androidx.lifecycle.AndroidViewModel
++import androidx.lifecycle.LiveData
++import androidx.lifecycle.MediatorLiveData
++import androidx.lifecycle.viewModelScope
++import com.cobalt.android.db.HistoryRepository
++import com.cobalt.android.db.LikedRepository
++import com.cobalt.android.db.entities.HistoryEntity
++import com.cobalt.android.db.entities.HistoryItemType
++import com.cobalt.android.db.entities.LikedEntity
++import kotlinx.coroutines.launch
++
++class HistoryViewModel(application: Application) : AndroidViewModel(application) {
++
++    private val historyRepository = HistoryRepository(application)
++    private val likedRepository = LikedRepository(application)
++
++    /** Phase 9's `HistoryEntity` already merges SHORT_WATCH + DOWNLOAD rows
++     *  into one most-recent-first table — this just maps to display rows. */
++    val historyRows: LiveData<List<HistoryRow>> = MediatorLiveData<List<HistoryRow>>().apply {
++        addSource(historyRepository.allHistory) { entities ->
++            value = entities.map { it.toRow() }
++        }
++    }
++
++    val likedRows: LiveData<List<HistoryRow>> = MediatorLiveData<List<HistoryRow>>().apply {
++        addSource(likedRepository.allLiked) { entities ->
++            value = entities.map { it.toRow() }
++        }
++    }
++
++    fun clearHistory() {
++        viewModelScope.launch { historyRepository.clearAll() }
++    }
++
++    private fun HistoryEntity.toRow() = HistoryRow(
++        id = "h$id",
++        title = title,
++        subtitle = "${if (itemType == HistoryItemType.DOWNLOAD.name) "downloaded" else "watched"} · " +
++            HistoryRowAdapter.formatTimestamp(timestamp),
++        sourceUrl = sourceUrl
++    )
++
++    private fun LikedEntity.toRow() = HistoryRow(
++        id = "l$videoId",
++        title = title,
++        subtitle = "$authorName · ${HistoryRowAdapter.formatTimestamp(likedAt)}",
++        sourceUrl = watchUrl
++    )
++}
+diff --git a/app/src/main/res/layout/item_history_row.xml b/app/src/main/res/layout/item_history_row.xml
+new file mode 100644
+index 0000000..09c239b
+--- /dev/null
++++ b/app/src/main/res/layout/item_history_row.xml
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:paddingHorizontal="16dp"
++    android:paddingVertical="10dp">
++
++    <TextView
++        android:id="@+id/tvTitle"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:textColor="@color/cobalt_text_primary"
++        android:fontFamily="@font/ibm_plex_mono_regular"
++        android:textSize="14sp"
++        android:ellipsize="end"
++        android:maxLines="2" />
++
++    <TextView
++        android:id="@+id/tvSubtitle"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="2dp"
++        android:textColor="@color/cobalt_text_secondary"
++        android:fontFamily="@font/ibm_plex_mono_regular"
++        android:textSize="12sp" />
++
++</LinearLayout>
+diff --git a/app/src/main/res/layout/sheet_history.xml b/app/src/main/res/layout/sheet_history.xml
+new file mode 100644
+index 0000000..f26b39a
+--- /dev/null
++++ b/app/src/main/res/layout/sheet_history.xml
+@@ -0,0 +1,48 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:background="@color/cobalt_surface_sidebar"
++    android:minHeight="200dp">
++
++    <View
++        android:layout_width="40dp"
++        android:layout_height="4dp"
++        android:layout_gravity="center_horizontal"
++        android:layout_marginTop="12dp"
++        android:layout_marginBottom="8dp"
++        android:background="@color/cobalt_input_border" />
++
++    <com.google.android.material.tabs.TabLayout
++        android:id="@+id/tabLayout"
++        android:layout_width="match_parent"
++        android:layout_height="40dp"
++        app:tabGravity="fill"
++        app:tabMode="fixed"
++        app:tabTextColor="@color/cobalt_text_secondary"
++        app:tabSelectedTextColor="@color/cobalt_text_primary"
++        app:tabIndicatorColor="@color/cobalt_accent_blue"
++        app:tabBackground="@android:color/transparent"
++        android:background="@color/cobalt_surface_sidebar"
++        app:tabTextAppearance="@style/TextAppearance.Cobalt.Mono" />
++
++    <androidx.recyclerview.widget.RecyclerView
++        android:id="@+id/recyclerView"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:clipToPadding="false"
++        android:paddingBottom="16dp" />
++
++    <TextView
++        android:id="@+id/tvEmpty"
++        android:layout_width="match_parent"
++        android:layout_height="80dp"
++        android:gravity="center"
++        android:textColor="@color/cobalt_text_secondary"
++        android:fontFamily="@font/ibm_plex_mono_regular"
++        android:textSize="13sp"
++        android:visibility="gone" />
++
++</LinearLayout>
+diff --git a/app/src/main/res/layout/sheet_settings.xml b/app/src/main/res/layout/sheet_settings.xml
+index 14b6648..f8b09c3 100644
+--- a/app/src/main/res/layout/sheet_settings.xml
++++ b/app/src/main/res/layout/sheet_settings.xml
+@@ -99,6 +99,17 @@
+             android:fontFamily="@font/ibm_plex_mono_regular"
+             app:strokeColor="@color/cobalt_input_border" />
+ 
++        <Button
++            android:id="@+id/btnHistory"
++            style="@style/Widget.Material3.Button.OutlinedButton"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:layout_marginTop="16dp"
++            android:text="@string/settings_view_history"
++            android:textColor="@color/cobalt_text_primary"
++            android:fontFamily="@font/ibm_plex_mono_regular"
++            app:strokeColor="@color/cobalt_input_border" />
++
+         <Button
+             android:id="@+id/btnClearHistory"
+             style="@style/Widget.Material3.Button.OutlinedButton"
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 81246fa..1f34f62 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -14,6 +14,10 @@
+     <string name="shortcut_open_queue">Open Queue</string>
+     <string name="tab_active">active</string>
+     <string name="tab_history">history</string>
++    <string name="tab_liked">liked</string>
++    <string name="settings_view_history">history &amp; likes</string>
++    <string name="no_history_yet">nothing watched or downloaded yet</string>
++    <string name="no_liked_yet">no liked Shorts yet</string>
+     <string name="action_open">open</string>
+     <string name="action_share">share</string>
+     <string name="action_retry">retry</string>
+-- 
+2.43.0
+

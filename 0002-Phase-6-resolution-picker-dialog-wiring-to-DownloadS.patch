@@ -1,0 +1,341 @@
+From 0b7c96ba9d84864ee63ccbfd26e815d4b57132a8 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.local>
+Date: Sun, 16 Aug 2026 19:52:59 +0000
+Subject: [PATCH 2/3] Phase 6: resolution picker dialog + wiring to
+ DownloadService
+
+- ResolutionPickerDialog (BottomSheetDialogFragment) lists formats from
+  HomeViewModel.resolveResult (activity-scoped, shared with HomeFragment)
+- ResolutionFormatAdapter: ListAdapter/DiffUtil, same pattern as the
+  existing DownloadAdapter
+- sheet_resolution_picker.xml / item_resolution_format.xml styled to
+  match the existing sheet_download_queue.xml / item_download.xml
+- HomeFragment switched viewModels() -> activityViewModels() so the
+  dialog (shown via childFragmentManager) shares one HomeViewModel
+  instance instead of getting a separate one, and now observes
+  resolveResult to actually show the sheet
+- confirming a format calls DownloadService.startHttps(...) directly -
+  the same call ShortsViewModel.downloadToDevice() already uses, so
+  both paths converge on one download engine
+- HomeViewModel.clearResolveResult() added so dismissing the sheet
+  (picked or swiped away) doesn't leave a stale Success value that
+  re-shows the sheet on the next observe (e.g. after rotation)
+
+Marks Phase 6's Definition of Done complete in ARCHITECTURE.md.
+---
+ .../ui/downloads/ResolutionFormatAdapter.kt   | 35 ++++++++
+ .../ui/downloads/ResolutionPickerDialog.kt    | 87 +++++++++++++++++++
+ .../cobalt/android/ui/home/HomeFragment.kt    | 24 +++--
+ .../cobalt/android/ui/home/HomeViewModel.kt   | 11 ++-
+ .../res/layout/item_resolution_format.xml     | 31 +++++++
+ .../res/layout/sheet_resolution_picker.xml    | 34 ++++++++
+ app/src/main/res/values/strings.xml           |  1 +
+ 7 files changed, 214 insertions(+), 9 deletions(-)
+ create mode 100644 app/src/main/java/com/cobalt/android/ui/downloads/ResolutionFormatAdapter.kt
+ create mode 100644 app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt
+ create mode 100644 app/src/main/res/layout/item_resolution_format.xml
+ create mode 100644 app/src/main/res/layout/sheet_resolution_picker.xml
+
+diff --git a/app/src/main/java/com/cobalt/android/ui/downloads/ResolutionFormatAdapter.kt b/app/src/main/java/com/cobalt/android/ui/downloads/ResolutionFormatAdapter.kt
+new file mode 100644
+index 0000000..de9f184
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/ui/downloads/ResolutionFormatAdapter.kt
+@@ -0,0 +1,35 @@
++package com.cobalt.android.ui.downloads
++
++import android.view.LayoutInflater
++import android.view.ViewGroup
++import androidx.recyclerview.widget.DiffUtil
++import androidx.recyclerview.widget.ListAdapter
++import androidx.recyclerview.widget.RecyclerView
++import com.cobalt.android.databinding.ItemResolutionFormatBinding
++import com.cobalt.android.link.LinkResolverRepository.ResolvedFormat
++
++class ResolutionFormatAdapter(
++    private val onPick: (ResolvedFormat) -> Unit
++) : ListAdapter<ResolvedFormat, ResolutionFormatAdapter.VH>(DIFF) {
++
++    inner class VH(val binding: ItemResolutionFormatBinding) : RecyclerView.ViewHolder(binding.root)
++
++    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
++        VH(ItemResolutionFormatBinding.inflate(LayoutInflater.from(parent.context), parent, false))
++
++    override fun onBindViewHolder(holder: VH, position: Int) {
++        val format = getItem(position)
++        with(holder.binding) {
++            tvLabel.text = format.label
++            tvFilename.text = format.filename
++            root.setOnClickListener { onPick(format) }
++        }
++    }
++
++    companion object {
++        val DIFF = object : DiffUtil.ItemCallback<ResolvedFormat>() {
++            override fun areItemsTheSame(a: ResolvedFormat, b: ResolvedFormat) = a.url == b.url
++            override fun areContentsTheSame(a: ResolvedFormat, b: ResolvedFormat) = a == b
++        }
++    }
++}
+diff --git a/app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt b/app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt
+new file mode 100644
+index 0000000..3685043
+--- /dev/null
++++ b/app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt
+@@ -0,0 +1,87 @@
++package com.cobalt.android.ui.downloads
++
++import android.content.DialogInterface
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import androidx.fragment.app.activityViewModels
++import androidx.recyclerview.widget.LinearLayoutManager
++import com.cobalt.android.databinding.SheetResolutionPickerBinding
++import com.cobalt.android.download.DownloadService
++import com.cobalt.android.link.LinkResolverRepository
++import com.cobalt.android.ui.home.HomeViewModel
++import com.google.android.material.bottomsheet.BottomSheetDialogFragment
++
++/**
++ * Phase 6: bottom sheet listing the formats `LinkResolverRepository`
++ * (Phase 4) resolved and `ResolutionCacheDao` (Phase 5) persisted.
++ * Reads `HomeViewModel.resolveResult` directly (activity-scoped, shared
++ * with `HomeFragment`) rather than passing formats through arguments, so
++ * there's no need to make `ResolvedFormat` Parcelable for what is always a
++ * same-process, same-activity hand-off.
++ *
++ * Confirming a format reuses `DownloadService.startHttps(...)` — the exact
++ * same call `ShortsViewModel.downloadToDevice()` already drives for the
++ * Shorts "save" action — so both paths converge on one download engine,
++ * not two (see ARCHITECTURE.md "Unified enhancement, NOT a parallel
++ * rebuild").
++ */
++class ResolutionPickerDialog : BottomSheetDialogFragment() {
++
++    private var _binding: SheetResolutionPickerBinding? = null
++    private val binding get() = _binding!!
++    private val viewModel: HomeViewModel by activityViewModels()
++
++    override fun onCreateView(
++        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
++    ): View {
++        _binding = SheetResolutionPickerBinding.inflate(inflater, container, false)
++        return binding.root
++    }
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        val result = viewModel.resolveResult.value as? LinkResolverRepository.ResolveResult.Success
++        if (result == null) {
++            // Nothing to show (e.g. survived a process/config change without
++            // the result) — don't display an empty sheet.
++            dismiss()
++            return
++        }
++
++        val adapter = ResolutionFormatAdapter { format ->
++            DownloadService.startHttps(
++                ctx = requireContext().applicationContext,
++                cobaltUrl = format.url,
++                filename = format.filename,
++                mimeType = format.mimeType,
++                cookies = "",
++                userAgent = "",
++                originalUrl = result.originalUrl
++            )
++            viewModel.clearResolveResult()
++            dismiss()
++        }
++        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
++        binding.recyclerView.adapter = adapter
++        adapter.submitList(result.formats)
++    }
++
++    override fun onDismiss(dialog: DialogInterface) {
++        super.onDismiss(dialog)
++        // Covers the swipe-away-without-picking path so a stale Success
++        // result doesn't silently re-show this sheet next time
++        // resolveResult is observed (e.g. after a config change).
++        viewModel.clearResolveResult()
++    }
++
++    override fun onDestroyView() {
++        super.onDestroyView()
++        _binding = null
++    }
++
++    companion object {
++        const val TAG = "ResolutionPickerDialog"
++        fun newInstance() = ResolutionPickerDialog()
++    }
++}
+diff --git a/app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt b/app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt
+index 259919b..81629f4 100644
+--- a/app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt
++++ b/app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt
+@@ -5,16 +5,21 @@ import android.view.LayoutInflater
+ import android.view.View
+ import android.view.ViewGroup
+ import androidx.fragment.app.Fragment
+-import androidx.fragment.app.viewModels
++import androidx.fragment.app.activityViewModels
+ import androidx.core.widget.addTextChangedListener
+ import com.cobalt.android.databinding.FragmentHomeBinding
++import com.cobalt.android.link.LinkResolverRepository
++import com.cobalt.android.ui.downloads.ResolutionPickerDialog
+ 
+ class HomeFragment : Fragment() {
+ 
+     private var _binding: FragmentHomeBinding? = null
+     private val binding get() = _binding!!
+ 
+-    private val viewModel: HomeViewModel by viewModels()
++    // Activity-scoped (not viewModels()) so ResolutionPickerDialog, shown via
++    // childFragmentManager, reads the same HomeViewModel instance/resolveResult
++    // rather than getting its own separate one.
++    private val viewModel: HomeViewModel by activityViewModels()
+ 
+     override fun onCreateView(
+         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+@@ -59,11 +64,16 @@ class HomeFragment : Fragment() {
+             binding.etLinkInput.isEnabled = !resolving
+         }
+ 
+-        // resolveResult itself isn't rendered yet — Phase 6 builds the
+-        // actual resolution-picker UI on top of it. This phase's job is
+-        // only to guarantee the data is real and present in the
+-        // ViewModel; no observer is needed here beyond what statusMessage
+-        // already surfaces to the user.
++        // Phase 6: show the resolution picker once a link resolves.
++        // childFragmentManager (not parentFragmentManager) so the sheet's
++        // lifecycle is tied to this fragment, not the hosting activity.
++        viewModel.resolveResult.observe(viewLifecycleOwner) { result ->
++            if (result is LinkResolverRepository.ResolveResult.Success &&
++                childFragmentManager.findFragmentByTag(ResolutionPickerDialog.TAG) == null
++            ) {
++                ResolutionPickerDialog.newInstance().show(childFragmentManager, ResolutionPickerDialog.TAG)
++            }
++        }
+     }
+ 
+     override fun onDestroyView() {
+diff --git a/app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt b/app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt
+index f1946f9..e921a8f 100644
+--- a/app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt
++++ b/app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt
+@@ -71,8 +71,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
+             when (val result = repository.resolve(url)) {
+                 is LinkResolverRepository.ResolveResult.Success -> {
+                     _resolveResult.value = result
+-                    _statusMessage.value = "Found ${result.formats.size} format(s). " +
+-                        "Resolution picker is coming in Phase 6."
++                    _statusMessage.value = "Found ${result.formats.size} format(s)."
+                 }
+                 is LinkResolverRepository.ResolveResult.Error -> {
+                     _statusMessage.value = result.message
+@@ -83,6 +82,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
+         }
+     }
+ 
++    /** Phase 6: called by `ResolutionPickerDialog` once a format is picked
++     * (or the sheet is dismissed without picking one), so a stale Success
++     * result doesn't cause the sheet to silently re-show on the next
++     * observe (e.g. after a config change). */
++    fun clearResolveResult() {
++        _resolveResult.value = null
++    }
++
+     private fun isPlausibleUrl(url: String): Boolean =
+         url.startsWith("http://") || url.startsWith("https://")
+ }
+diff --git a/app/src/main/res/layout/item_resolution_format.xml b/app/src/main/res/layout/item_resolution_format.xml
+new file mode 100644
+index 0000000..aaa9be7
+--- /dev/null
++++ b/app/src/main/res/layout/item_resolution_format.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:clickable="true"
++    android:focusable="true"
++    android:background="?attr/selectableItemBackground"
++    android:paddingHorizontal="16dp"
++    android:paddingVertical="12dp">
++
++    <TextView
++        android:id="@+id/tvLabel"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:textColor="@color/cobalt_text_primary"
++        android:fontFamily="@font/ibm_plex_mono_regular"
++        android:textSize="14sp" />
++
++    <TextView
++        android:id="@+id/tvFilename"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="2dp"
++        android:textColor="@color/cobalt_text_secondary"
++        android:fontFamily="@font/ibm_plex_mono_regular"
++        android:textSize="12sp"
++        android:ellipsize="middle"
++        android:singleLine="true" />
++
++</LinearLayout>
+diff --git a/app/src/main/res/layout/sheet_resolution_picker.xml b/app/src/main/res/layout/sheet_resolution_picker.xml
+new file mode 100644
+index 0000000..98d1866
+--- /dev/null
++++ b/app/src/main/res/layout/sheet_resolution_picker.xml
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:background="@color/cobalt_surface_sidebar"
++    android:minHeight="160dp">
++
++    <View
++        android:layout_width="40dp"
++        android:layout_height="4dp"
++        android:layout_gravity="center_horizontal"
++        android:layout_marginTop="12dp"
++        android:layout_marginBottom="8dp"
++        android:background="@color/cobalt_input_border" />
++
++    <TextView
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_marginStart="16dp"
++        android:layout_marginBottom="4dp"
++        android:text="@string/resolution_picker_title"
++        android:textColor="@color/cobalt_text_primary"
++        android:fontFamily="@font/ibm_plex_mono_regular"
++        android:textSize="14sp" />
++
++    <androidx.recyclerview.widget.RecyclerView
++        android:id="@+id/recyclerView"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:clipToPadding="false"
++        android:paddingBottom="16dp" />
++
++</LinearLayout>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index e095ebd..74725a4 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -30,4 +30,5 @@
+     <string name="channel_downloads_name">Downloads</string>
+     <string name="channel_downloads_desc">Download progress and completion</string>
+     <string name="retry_notification_title">Ready to retry</string>
++    <string name="resolution_picker_title">choose a format</string>
+ </resources>
+-- 
+2.43.0
+

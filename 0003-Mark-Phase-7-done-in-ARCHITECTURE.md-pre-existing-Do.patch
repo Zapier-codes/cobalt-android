@@ -1,0 +1,62 @@
+From a1401d9497cef0d66567c6d90973746137a61b97 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.local>
+Date: Sun, 16 Aug 2026 19:54:59 +0000
+Subject: [PATCH 3/3] =?UTF-8?q?Mark=20Phase=207=20done=20in=20ARCHITECTURE?=
+ =?UTF-8?q?.md=20=E2=80=94=20pre-existing=20DownloadQueueSheet=20already?=
+ =?UTF-8?q?=20met=20the=20DoD?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ ARCHITECTURE.md | 32 +++++++++++++++++++-------------
+ 1 file changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index 96c6c22..7163385 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -484,21 +484,27 @@ re-resolve on every open.
+ 
+ ---
+ 
+-### Phase 7 — Downloads / Library screen: list + live progress
+-**Files:**
+-- `app/src/main/java/com/cobalt/android/ui/downloads/DownloadsLibraryFragment.kt`
+-- `app/src/main/java/com/cobalt/android/ui/downloads/DownloadsViewModel.kt`
+-- `app/src/main/res/layout/fragment_downloads_library.xml` — RecyclerView
+-  list of completed + in-progress downloads, thumbnail + title + progress
+-  or file size
++### Phase 7 — Downloads / Library screen: list + live progress ✅ done (pre-existing, now recorded)
++**Files (actual — differ from the spec below, see note):**
++- `app/src/main/java/com/cobalt/android/ui/DownloadQueueSheet.kt` +
++  `DownloadQueueViewModel.kt` — a bottom sheet, not a full-screen
++  `DownloadsLibraryFragment`. Already queries `DownloadRepository.allDownloads`/
++  `activeDownloads` (real `Room` `LiveData`, not mock) and already reflects
++  live progress: `DownloadService` calls `updateProgress()` mid-download,
++  which Room emits straight through to `DownloadAdapter`. Building a second,
++  parallel full-screen version alongside this would violate "Unified
++  enhancement, NOT a parallel rebuild" the same way the Phase 5 duplicate
++  entity did — so this phase records the existing implementation as meeting
++  the DoD rather than building a redundant one.
++- `app/src/main/res/layout/sheet_download_queue.xml` + `item_download.xml`
++  (not `fragment_downloads_library.xml`).
+ 
+ **Definition of Done:**
+-1. Screen queries the existing `DownloadDao`/`DownloadRepository`
+-   (`allDownloads`/`activeDownloads` `LiveData`, already implemented — real
+-   data, not mock) and reflects live progress for in-progress items.
+-2. Reachable from somewhere in the nav (top-nav downloads icon per the
+-   original scaffold, or a 4th bottom-nav/overflow entry — pick one and be
+-   consistent; record the choice in this file once made).
++1. ✅ Real `DownloadDao`/`DownloadRepository` data, live progress reflected.
++2. ✅ Reachable via `fabQueue` (a FAB, bottom|end) in `MainActivity` — the
++   choice recorded here per the DoD's own instruction: FAB was already the
++   established entry point, not a top-nav icon or bottom-nav tab. Consistent
++   single entry point, nothing else invokes `DownloadQueueSheet`.
+ 
+ ---
+ 
+-- 
+2.43.0
+
