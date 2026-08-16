@@ -606,15 +606,40 @@ this session — same standing caveat as every phase since Phase 4.
 
 ---
 
-### Phase 11 — History & Likes: UI screen
-**Files:**
-- `app/src/main/java/com/cobalt/android/ui/history/HistoryFragment.kt`
-  (watched Shorts + resolved links + liked items, most-recent first)
+### Phase 11 — History & Likes: UI screen ✅ done
+**Files (actual):**
+- `app/src/main/java/com/cobalt/android/ui/history/HistoryFragment.kt` —
+  a `BottomSheetDialogFragment` (like `DownloadQueueSheet`/`SettingsSheet`),
+  not a `nav_graph.xml` destination — `BottomSheetDialogFragment` already
+  is a `Fragment` subtype, kept consistent with how the app's other
+  secondary screens are shown, despite the "Fragment" name the original
+  spec gave this file. **Reachable from a `btnHistory` entry added to the
+  settings sheet** (`SettingsSheet`/`sheet_settings.xml`) — the choice this
+  phase's own DoD asks to record — not a bottom-nav tab or top-nav icon.
+- `HistoryViewModel.kt` — maps Phase 9/10's `HistoryEntity`/`LikedEntity`
+  rows to a small shared `HistoryRow` display model.
+- `HistoryRowAdapter.kt` — one `ListAdapter` reused for both tabs (History
+  merges SHORT_WATCH+DOWNLOAD per Phase 9's single-table design; Liked is
+  its own tab), same `DiffUtil` pattern as `DownloadAdapter`. Tapping a row
+  opens its source URL in the browser.
+- `sheet_history.xml`, `item_history_row.xml` — styled to match
+  `sheet_download_queue.xml`/`item_download.xml`.
 
 **Definition of Done:**
-1. `HistoryFragment` displays real DB-backed history/likes from Phase
-   9–10's tables, reachable from the UI (settings menu entry or
-   profile-style surface — pick one, record the choice here).
+1. ✅ `HistoryFragment` displays real DB-backed history/likes from Phase
+   9–10's tables (History tab: merged, most-recent-first; Liked tab:
+   most-recently-liked-first), reachable from the settings sheet.
+
+**Known naming ambiguity (honest, not fixed this phase):** the pre-existing
+`btnClearHistory` in `SettingsSheet` clears `DownloadRepository`'s
+COMPLETE/FAILED download rows (a different table, named before Phase 9
+existed) — unrelated to this phase's `HistoryEntity`/`LikedEntity`
+"History & Likes" screen sitting right above it. Same button label, two
+different things being cleared. Worth a rename/clarify in a later phase,
+left as-is here since renaming it wasn't part of Phase 11's scope.
+
+**Known limitation:** not built/run against a real Android toolchain in
+this session — same standing caveat as every phase since Phase 4.
 
 ---
 
