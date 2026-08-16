@@ -670,17 +670,55 @@ back into `ResolutionPickerDialog`.
 
 ---
 
-### Phase 13 — Settings: UI screen + theme wiring
-**Files:**
-- `app/src/main/java/com/cobalt/android/ui/settings/SettingsFragment.kt`
-- `app/src/main/res/xml/settings_preferences.xml` (if using
-  `PreferenceFragmentCompat`)
+### Phase 13 — Settings: UI screen + theme wiring ✅ done
+**Files (actual):**
+- `app/src/main/java/com/cobalt/android/ui/SettingsFragment.kt` — **not**
+  a new file at `ui/settings/SettingsFragment.kt`. A `SettingsFragment.kt`
+  already existed at `ui/` as a dead placeholder wired to the bottom-nav
+  `nav_settings` tab (`nav_graph.xml`/`bottom_nav_menu.xml`) since Phase 1,
+  never built out. It's also distinct from `SettingsSheet` (the bottom
+  sheet MainActivity's gear icon opens, owning cobalt-URL/audio-only/
+  clipboard/battery/history). Building a second, unrelated "Settings" UI
+  at a new path would mean the app ships two disconnected settings
+  screens; instead this phase filled in the already-reachable, correctly-
+  named placeholder. Same call as Phase 11's History naming ambiguity.
+- `app/src/main/res/layout/fragment_settings.xml` — replaced the
+  "Settings placeholder" stub with real controls: a `MaterialButtonToggleGroup`
+  for default format (ask/video/audio), an `EditText` for download
+  location, and a `MaterialButtonToggleGroup` for theme (light/dark/
+  dynamic). No `PreferenceFragmentCompat`/`settings_preferences.xml` —
+  plain views matched the toggle-group/EditText pattern already used by
+  `SettingsSheet` rather than introducing a second settings UI paradigm.
+- `app/src/main/java/com/cobalt/android/util/ThemeApplier.kt` — new;
+  shared by `SettingsFragment` (applied immediately on change, followed
+  by `activity.recreate()`) and `CobaltApplication` below, so the mode→
+  `AppCompatDelegate`/`DynamicColors` mapping lives in one place.
+- `app/src/main/java/com/cobalt/android/CobaltApplication.kt` — calls
+  `ThemeApplier.apply()` at process start, before any Activity exists.
 
 **Definition of Done:**
-1. `SettingsFragment` exposes and edits Phase 12's keys.
-2. Changing the theme toggle actually applies (Material You dynamic color
-   from Phase 1 responds to it) — this is the one piece of Phase 13 that
-   must visibly work, not just persist a value nothing reads.
+1. ✅ `SettingsFragment` exposes and edits Phase 12's three keys, changes
+   applied immediately (format/theme toggles) or on `onPause()` (download
+   location text field, matching `SettingsSheet.etCobaltUrl`'s
+   commit-on-exit pattern).
+2. ⚠️ Theme toggle **partially** visibly works. Switching to/from DYNAMIC
+   is real and visible on API 31+: `DynamicColors.applyToActivitiesIfAvailable()`
+   re-tints `colorPrimary`/`colorSurface`/etc. from the device wallpaper.
+   LIGHT and DARK currently render **identically** — `AppCompatDelegate
+   .setDefaultNightMode()` only changes anything if the app ships a
+   `values-night` resource set distinct from `values`, and this app's
+   `colors.xml`/`themes.xml` is a single hardcoded dark palette
+   (`Theme.Cobalt` extends `Theme.Material3.Dark` unconditionally, no
+   `values-night` directory exists anywhere in the project). That's a
+   pre-existing Phase 1 gap (which described "Material You dynamic color"
+   but never actually called `DynamicColors.applyToActivitiesIfAvailable()`
+   or shipped a light theme) — this phase surfaces it honestly rather than
+   silently pretending LIGHT does something it doesn't. Designing and
+   shipping a real light palette across every screen is genuine design
+   work belonging to its own phase, not settings plumbing.
+
+**Known limitation:** not built/run against a real Android toolchain in
+this session — same standing caveat as every phase since Phase 4.
 
 ---
 
