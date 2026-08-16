@@ -1,216 +1,277 @@
-# cobalt-android — Product & Architecture Spec
+# Cobalt-Android — Full Architecture & Build Sequencing
 
-## Vision
-A Vidmate-style media companion app, upgraded with a YouTube-caliber navigation
-model and a TikTok-caliber Shorts feed. Fully usable standalone (NewPipe-level
-extraction, no external dependency), with an optional Cobalt-powered upgrade
-unlocked via user-supplied API key. All visual identity — theme, colors, app
-name/branding — is driven remotely by a config dashboard, so changes propagate
-without a rebuild. Everything else about the app runs entirely on-device.
+This document is the single source of truth for what Hermes builds, in what
+order, and how it knows a phase is actually done. It replaces the previous
+architecture description. Every phase below has an explicit file list and a
+**Definition of Done** — Hermes should never have to guess what "the next
+concrete step" is.
 
-## 0. No Accounts, No Login — Anywhere
-- The app must never require sign-up, login, or any account creation, for any
-  feature, at any point.
-- Anything that would normally be tied to a user account (watch history, likes,
-  "for you" preference weighting, downloads list) is stored **locally on-device
-  only** (Room), not synced to any backend or identity.
-- If a feature would only make sense with an account (comments tied to identity,
-  cross-device sync, subscriptions to creators), either omit it or implement a
-  local-only equivalent — never gate a screen or action behind login.
+## No stubs, no placeholders — full working implementations only
 
-## Core Tech Stack (target state)
-- Kotlin, Jetpack Compose (migrating off View-based UI)
-- Clean Architecture: presentation / domain / data layers, clear module boundaries
-- Hilt for DI
-- Coroutines + Flow for async/state
-- Room (local persistence + local resolution cache, see section 10), WorkManager
-  (background jobs, incl. downloads), OkHttp (networking)
-- Min SDK 26 / Target SDK 35
+Every file, function, and screen produced under this spec must be a real,
+functioning implementation — not a stub, not a `TODO`, not a mock/fake data
+source left in permanently, not a "wire this up later" comment. Specifically:
 
-## 1. Navigation Structure
+- If a phase requires a network call, write the real network call (using
+  whatever HTTP client is already in the project, or Retrofit/OkHttp if
+  none exists yet) — not a hardcoded fake response left in place as the
+  final state. A short-lived mock is only acceptable mid-cycle if the very
+  same cycle replaces it with the real call before committing.
+- If a phase requires a database write, it must actually persist and be
+  queryable — not an in-memory list standing in for Room.
+- If a phase requires a UI interaction (tap, swipe, submit), the listener
+  must perform the real action end-to-end, not log/toast a placeholder
+  message.
+- "Definition of Done" below means done — every condition must be
+  genuinely true in the committed code, not approximately true or true
+  "in spirit." A phase is not complete if any of its files contain a
+  `TODO`, `FIXME`, `// implement later`, empty function body, or a
+  hardcoded/fake value standing in for real logic.
+- If a single cycle's bounded unit of work can't reach a fully working
+  state on its own (e.g. it depends on a file from an earlier, unfinished
+  step), do less scope that cycle rather than write a stub — pick a
+  smaller piece of the phase that CAN be fully implemented in one cycle,
+  instead of writing a partial/fake version of the larger piece.
 
-### Bottom navigation (3 tabs)
-- **Home** — Vidmate-style trending/discovery page
-- **Shorts** — full-screen vertical short-form feed (default landing tab)
-- **Settings** — app settings, Cobalt key entry
+Design references (patterns only, no code or assets copied):
+- **Velune** (open-source YouTube Music client) — for layered MVVM/Clean
+  Architecture structure: `ui/screens`, `viewmodels`, `repository`,
+  `db/entities` + `db/daos`, `di`, and a WorkManager-based download-manager
+  module with its own notification manager.
+- **YouTube / TikTok home & shorts feed conventions** — vertical full-screen
+  video feed with a bottom nav bar, per-item engagement affordances, and a
+  separate top-level Home/Discovery surface distinct from the feed itself.
+- **Vidmate-style downloader UX** — paste-a-link (or in-app browse) entry
+  point, format/resolution picker before download, a persistent download
+  queue with progress, and a downloaded-files library organized for offline
+  playback.
 
-### Top navigation (persistent on Home)
-- Search bar (with paste-URL recognition — see section 5)
-- Downloads icon (shortcut to downloads/library — see section 6)
+## Tech stack (unchanged from existing repo)
+- Kotlin, View-based UI (existing `activity_main.xml` / `MainActivity.kt`
+  approach — NOT Compose, to match what's already in the repo)
+- Room for local persistence
+- Material Components (already a dependency per `build.gradle.kts`)
+- WorkManager for background downloads
+- Standard Android `ViewModel` + `LiveData`/`Flow`
 
-### Default landing page = Shorts
-- Opens directly into the Shorts feed on app launch, not Home.
+## Package structure (target — build toward this, don't require it before
+   phase 1 is done)
+```
+app/src/main/java/com/cobalt/android/
+├── ui/
+│   ├── home/            HomeFragment, HomeViewModel
+│   ├── shorts/          ShortsFragment, ShortsViewModel, ShortsAdapter
+│   ├── downloads/        DownloadsLibraryFragment, DownloadsViewModel
+│   ├── history/         HistoryFragment, HistoryViewModel
+│   └── settings/        SettingsFragment, SettingsViewModel
+├── db/
+│   ├── entities/         one file per entity (see per-phase lists below)
+│   ├── daos/             one DAO interface per entity group
+│   └── CobaltDatabase.kt Room database, version-controlled with migrations
+├── repository/           one repository per feature area, wraps DAO + network
+├── download/             DownloadService, DownloadWorker, DownloadNotificationManager
+├── di/                   manual DI or Hilt modules (match whatever the repo already uses)
+└── MainActivity.kt       hosts bottom nav + fragment container (already exists)
+```
 
-## 2. Shorts Page (TikTok-style vertical feed)
-- Full-screen 9:16 vertical video feed, one video per screen.
-- **Autoplay**: current video plays automatically on view; mute state persists
-  across videos.
-- **Sequential advance, not preloaded batch**: scrolling advances to the *next*
-  single video, which then autoplays — mirrors TikTok's one-at-a-time paging.
-  Previous video pauses/releases when swiped away.
-- **Preload strategy**: only the *next single* video pre-buffers while the
-  current one plays — not a batch. Combined with the local resolution cache
-  (section 10), this keeps bandwidth and redundant resolution calls bounded.
-- **On-screen controls/overlay**:
-  - Tap to pause/resume
-  - Mute/unmute toggle
-  - Video info overlay: title/channel/description (truncated, expandable)
-  - Right-side action rail: like (local-only), share, download, no comment/
-    account-gated actions
-  - Thin progress indicator for current video position
-- Reference: **InnerTube** sources Shorts-equivalent content, consistent with
-  the standalone extraction approach in section 4.
-- Vertical pager (Compose `Pager` with snap) with page-by-page playback
-  lifecycle — each page's ExoPlayer starts on becoming active, releases on
-  becoming inactive.
+## Build Sequencing — 8 phases, in strict order
 
-## 3. Home Page (Vidmate-style discovery)
-- Trending/recommended items surfaced based on:
-  - **Local preferences** — derived on-device from local watch/like history
-    (Room), no server-side account profile.
-  - **User location** — content reflects what's trending/relevant locally.
-- Layout: horizontal category rows (e.g. "Trending near you," "Popular") plus
-  a browsable grid.
-- Each card: thumbnail, title, source/channel, duration badge. Tap opens an
-  overlay detail/player view (section 7).
-- Uses skeleton placeholders while loading (section 11) and the local
-  resolution cache (section 10) so returning users see instant content.
+Hermes must not start phase N+1 until phase N's Definition of Done is fully
+met and committed. If ARCHITECTURE.md and state.json disagree about which
+phase is current, ARCHITECTURE.md's Definition of Done checks (verified by
+inspecting the actual repo) are the source of truth, not state.json's
+`current_phase` field.
 
-## 4. Extraction Engine — Dual Mode
-### Standalone mode (default, no Cobalt key required)
-- NewPipe-Extractor (or equivalent) as the core extraction library.
-- InnerTube used for Shorts-equivalent content sourcing.
-- Full functionality without any external service dependency.
+---
 
-### Cobalt-enhanced mode (optional upgrade)
-- Settings screen: user pastes a Cobalt API key (locally stored, no account).
-- Once validated, routes extraction through Cobalt where it offers higher-
-  quality sources / broader platform support, falling back to NewPipe-
-  Extractor/InnerTube where Cobalt doesn't cover a source.
-- Additive layer — standalone mode always keeps working without a key.
-- Note: Cobalt itself is an external API the user opts into by supplying a
-  key — this is the one piece that isn't purely on-device by nature, since
-  it's a third-party service the user explicitly chooses to use. Everything
-  else in the app (caching, storage, preferences, standalone extraction)
-  stays on-device regardless of whether Cobalt mode is active.
+### Phase 1 — Bottom-nav shell + theming scaffold
+**Files:**
+- `app/src/main/res/layout/activity_main.xml` — CoordinatorLayout with a
+  `BottomNavigationView` (3 items: Home, Shorts, Settings) and a
+  `FrameLayout` fragment container
+- `app/src/main/res/menu/bottom_nav_menu.xml`
+- `app/src/main/res/drawable/ic_home.xml`, `ic_shorts.xml`, `ic_settings.xml`
+- `app/src/main/java/com/cobalt/android/MainActivity.kt` — wires
+  `BottomNavigationView.setOnItemSelectedListener` to swap fragments
+- `app/src/main/res/values/themes.xml` — Material You dynamic color support
+  (`DynamicColors.applyToActivityIfAvailable`)
+- `app/src/main/res/values/strings.xml` — nav labels
 
-## 5. Smart Search Bar
-- Top nav, visible on Home.
-- Paste-URL recognition: detects a pasted media URL and auto-routes to fetch/
-  preview instead of a text query; falls back to normal search otherwise.
+**Definition of Done:**
+1. `activity_main.xml` contains a `BottomNavigationView` with exactly 3 menu
+   items referencing `bottom_nav_menu.xml`.
+2. `MainActivity.kt` contains an `onItemSelectedListener` (or equivalent)
+   that actually swaps the fragment container's content — not a stub/TODO.
+3. All three destination fragments exist as real files (even if their body
+   is minimal) — see Phases 2-3 for Home/Shorts specifically.
+4. `bg_fab.xml` is untouched (oval FAB background, not an icon).
 
-## 6. Downloads
-- **Universal link downloader**: users can paste *any* supported link — not
-  only items already surfaced in-app — and download it. Same resolution/
-  extraction pipeline (section 4) handles both in-app items and pasted links;
-  there is no separate code path for "external" vs "internal" downloads.
-- **Format & quality selection**: for every downloadable item, user picks:
-  - **Video** (multiple qualities/resolutions, whatever the source exposes —
-    e.g. 360p/720p/1080p/best-available) or
-  - **Audio-only** extraction (e.g. m4a/mp3), for music/audio-focused downloads
-  - Mirrors Vidmate's format/quality picker pattern.
-- Downloads run via WorkManager in the background; support pause/resume/retry
-  and concurrent download limits (see enhancement in section 12).
-- Downloads icon in top nav opens a local downloads list (no account tie-in);
-  files stored locally, fully playable offline.
-- Available as an action from Home, Shorts, and the universal-link entry point.
+---
 
-## 7. Overlay Navigation Model
-- Secondary routes (video detail, full player, settings sub-pages, downloads
-  list) render as overlays on top of the current tab, not full screen
-  transitions.
-- Underlying routing/back-stack works normally (deep links, back button,
-  process death/restoration) — overlay presentation is a UI layer on top of
-  standard navigation.
-- Goal: one continuous app surface, YouTube/TikTok-caliber smoothness.
+### Phase 2 — Shorts feed screen
+**Files:**
+- `app/src/main/java/com/cobalt/android/ui/shorts/ShortsFragment.kt`
+  (already exists — verify it's wired into MainActivity's nav, not just
+  created standalone)
+- `app/src/main/java/com/cobalt/android/ui/shorts/ShortsViewModel.kt`
+- `app/src/main/java/com/cobalt/android/ui/shorts/ShortsAdapter.kt` — a
+  `RecyclerView.Adapter` using `ViewPager2` with vertical orientation for
+  full-screen swipeable video items (TikTok/Shorts-style paging, one video
+  per screen)
+- `app/src/main/res/layout/fragment_shorts.xml` — `ViewPager2` filling the
+  screen
+- `app/src/main/res/layout/item_short_video.xml` — one page: video surface
+  + right-side vertical icon rail (like, save/download, share) + bottom
+  caption/source-link overlay
+- `app/src/main/java/com/cobalt/android/db/entities/ShortsCacheEntity.kt`
 
-## 8. Settings
-- Cobalt API key entry + validation status.
-- Remote config connection status (debug builds).
-- Location permission control for Home personalization, with fallback
-  (section 9).
-- Clear local data option (wipes local history/likes/preferences/cache).
-- Standard app settings (default download quality/format, storage location).
+**Definition of Done:**
+1. `ShortsFragment` is reachable by tapping the Shorts tab in the running
+   nav (not just instantiated in isolation).
+2. `ViewPager2` with vertical orientation is present and bound to an
+   adapter backed by a real (even if small/mock) data source.
+3. Each item layout has: a video surface view, a like/save/download action,
+   and a share action — matching the reference UX (icon rail, not a
+   traditional list row).
 
-## 9. Permissions & Fallbacks
-- **Location**: requested for Home personalization only, never required to use
-  the app. If denied, fall back to a manual region/country picker so the user
-  still gets locally-relevant content without granting the permission.
-- No other runtime permission gates any core feature.
+---
 
-## 10. Local Caching & Resolution Layer (fully on-device, no backend)
-Everything in this app runs entirely on the user's device — there is no
-server, backend, or shared service of any kind. Caching is scoped per-device
-only: it makes *this user's* repeat visits fast. It does not and cannot serve
-other users' requests, since that would require a shared server, which is
-explicitly out of scope for this app.
+### Phase 3 — Home / Discovery screen (link-paste + browse entry point)
+**Files:**
+- `app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt`
+- `app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt`
+- `app/src/main/res/layout/fragment_home.xml` — top search/paste-link bar
+  + a `WebView` (or feed of recent/trending sources) below it, matching the
+  existing `MainActivity` WebView-centric approach
+- `app/src/main/java/com/cobalt/android/repository/LinkResolverRepository.kt`
+  — takes a pasted URL, resolves available formats/resolutions (stub the
+  network call if the real resolver isn't ready yet, but the interface and
+  call site must be real)
 
-- **Local cache (Room)**: resolved stream metadata/URLs and extracted info are
-  cached on-device with a TTL. Reopening a previously-viewed item reads from
-  local cache first; only re-resolves on cache miss or expiry.
-- **Cache-first DAO pattern**: DAOs check local cache → serve immediately if
-  fresh → refresh in the background if stale, rather than blocking on a fresh
-  resolve every time a screen opens. This is what prevents the same device
-  from re-resolving the same item on every visit.
-- **Cache invalidation**: TTL-based (short for trending/fast-changing content,
-  longer for stable metadata like titles/thumbnails); manual invalidation path
-  for when a resolved stream URL expires and playback fails.
-- **Prefetch on Home/Shorts load**: as items are fetched for the visible feed,
-  cache them immediately so scrolling back or reopening within the session is
-  instant — still entirely local, no cross-device sharing.
+**Definition of Done:**
+1. Home screen has a visible paste-link/search entry field distinct from
+   the Shorts feed.
+2. Submitting a link invokes `LinkResolverRepository` (real call, not a
+   TODO/comment).
+3. A successful resolve navigates to or surfaces the format/resolution
+   picker from Phase 4 — the two phases must actually connect.
 
-## 11. Skeleton Loading
-- Every content-loading surface (Home rows/grid, Shorts feed entries, search
-  results, downloads list) shows skeleton/shimmer placeholders matching the
-  final layout shape while data loads — never a blank screen or a bare spinner.
-- Skeletons resolve to real content progressively as items arrive, rather than
-  waiting for the entire batch before rendering anything.
+---
 
-## 12. Suggested Enhancements
-Three additions worth building in, beyond what's specified above:
+### Phase 4 — Download engine (queue, resolution picker, worker, notifications)
+**Files:**
+- `app/src/main/java/com/cobalt/android/db/entities/DownloadEntity.kt` —
+  fields: id, sourceUrl, title, thumbnailUrl, resolution, status
+  (queued/downloading/paused/failed/complete), progress, filePath, createdAt
+- `app/src/main/java/com/cobalt/android/db/daos/DownloadDao.kt`
+- `app/src/main/java/com/cobalt/android/db/entities/ResolutionCacheEntity.kt`
+  — per-source available formats, to avoid re-resolving on every open
+- `app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt`
+  — bottom sheet/dialog listing available resolutions/formats for a
+  resolved link, matching the Vidmate-style "pick quality before download"
+  step
+- `app/src/main/java/com/cobalt/android/download/DownloadWorker.kt` —
+  `CoroutineWorker` performing the actual download, updating `DownloadDao`
+  progress as it goes
+- `app/src/main/java/com/cobalt/android/download/DownloadNotificationManager.kt`
+  — persistent progress notification per active download
 
-1. **Background / mini-player audio mode** — when the app is backgrounded or
-   the screen locked, video continues as audio-only playback (or a small
-   picture-in-picture window), so users don't lose playback when they switch
-   apps. Common in Vidmate-class apps and materially improves perceived
-   quality.
-2. **Network-aware adaptive quality** — auto-select playback (and suggested
-   download) quality based on current connection speed/type (Wi-Fi vs mobile
-   data), with a manual override in Settings. Reduces buffering on Shorts
-   specifically, where feel matters most.
-3. **Download queue manager** — a proper queue (not fire-and-forget) for
-   downloads: concurrent-download limit, per-item progress, pause/resume/
-   retry/cancel, and automatic retry with backoff on transient failures.
-   Pairs directly with section 6's universal downloader so multiple pasted
-   links or in-app downloads don't compete uncontrolled for bandwidth.
+**Definition of Done:**
+1. `DownloadEntity` + `DownloadDao` exist with the fields above, and
+   `CobaltDatabase.kt` includes `DownloadEntity` in its entity list.
+2. `ResolutionPickerDialog` is actually shown after `LinkResolverRepository`
+   resolves a link (Phase 3 → Phase 4 wiring is real, not aspirational).
+3. Confirming a resolution enqueues a `DownloadWorker` via WorkManager (not
+   a fire-and-forget coroutine with no persistence/retry).
+4. A notification with progress appears while a download is active.
 
-## Non-Goals (for now)
-- No user accounts / cloud sync, in this phase or any future phase implied by
-  this doc — see section 0.
-- No monetization/paywall logic in this phase.
-- No comments or social features requiring identity.
-- No backend, server, or shared service of any kind — everything runs
-  on-device (Cobalt, if the user opts in, is the sole external API call,
-  and is explicitly user-initiated via a locally-stored key).
+---
 
-## Build Sequencing (for the agent)
-Work in this order, each phase landing and passing CI before the next begins:
-1. Bottom-nav shell (Home / Shorts / Settings) + top-nav search bar/downloads
-   icon + dynamic theming scaffold + local Room schema for history/likes/
-   preferences/resolution-cache (sections 0, 10) + skeleton loading components
-   (section 11) reused across every screen from the start
-2. Shorts feed: InnerTube-sourced content, vertical pager, autoplay + sequential
-   playback + single-video-ahead preload + action rail — default landing
-   experience, prioritize feel
-3. Home page: NewPipe-Extractor integration, trending rows + grid, location +
-   local-preference-based content, cache-first DAO reads, permission fallback
-4. Settings + Cobalt key entry + dual-mode extraction routing + clear-local-data
-5. Downloads: universal link downloader, format/quality picker, WorkManager
-   queue manager (enhancement 3), offline playback
-6. Smart search bar paste-URL recognition
-7. Enhancements: background/mini-player audio mode, network-aware adaptive
-   quality
-8. Overlay navigation polish pass: transitions, remote config live-refresh,
-   edge cases
+### Phase 5 — Downloads / Library screen
+**Files:**
+- `app/src/main/java/com/cobalt/android/ui/downloads/DownloadsLibraryFragment.kt`
+- `app/src/main/java/com/cobalt/android/ui/downloads/DownloadsViewModel.kt`
+- `app/src/main/res/layout/fragment_downloads_library.xml` — RecyclerView
+  list of completed + in-progress downloads, thumbnail + title + progress
+  or file size, tap-to-play
 
-Each phase should be a small, reviewable set of commits — not one giant rewrite commit.
+**Definition of Done:**
+1. Screen queries `DownloadDao` (real Flow/LiveData, not mock data) and
+   reflects live progress for in-progress items.
+2. Tapping a completed item plays the local file (via a video player
+   surface — reuse whatever player component exists, or ExoPlayer if none
+   does yet).
+3. Reachable from somewhere in the nav (top-nav downloads icon per the
+   original scaffold, or a 4th bottom-nav/overflow entry — pick one and be
+   consistent).
+
+---
+
+### Phase 6 — History & Likes
+**Files:**
+- `app/src/main/java/com/cobalt/android/db/entities/HistoryEntity.kt`
+- `app/src/main/java/com/cobalt/android/db/entities/LikedEntity.kt`
+- `app/src/main/java/com/cobalt/android/db/daos/HistoryDao.kt`
+- `app/src/main/java/com/cobalt/android/db/daos/LikedDao.kt`
+- `app/src/main/java/com/cobalt/android/ui/history/HistoryFragment.kt`
+  (watched Shorts + resolved links, most-recent first)
+
+**Definition of Done:**
+1. Watching a Shorts item (Phase 2) writes a `HistoryEntity` row — real
+   integration, not a standalone unused DAO.
+2. Tapping "like" on a Shorts item (the icon rail from Phase 2) writes a
+   `LikedEntity` row.
+3. `HistoryFragment` displays real DB-backed history, reachable from the
+   UI (settings menu entry or profile-style surface — pick one).
+
+---
+
+### Phase 7 — Settings & preferences
+**Files:**
+- `app/src/main/java/com/cobalt/android/db/entities/PreferenceEntity.kt`
+  (or DataStore, if preferred over Room for key-value settings — pick one
+  approach and use it consistently, do not mix both)
+- `app/src/main/java/com/cobalt/android/ui/settings/SettingsFragment.kt`
+- `app/src/main/res/xml/settings_preferences.xml` (if using
+  `PreferenceFragmentCompat`)
+
+**Definition of Done:**
+1. At minimum: default download resolution, download location, and
+   dark/light/dynamic theme toggle are present and persisted.
+2. Changing the theme toggle actually applies (Material You dynamic color
+   from Phase 1 responds to it).
+3. Changing the default resolution actually changes what
+   `ResolutionPickerDialog` (Phase 4) pre-selects.
+
+---
+
+### Phase 8 — Polish & performance
+**Files:** no new required files; this phase is verification + refinement
+of everything above.
+
+**Definition of Done (all must be true):**
+1. Skeleton/shimmer loading placeholders are present on Home, Shorts, and
+   Downloads screens while their respective data loads (per the original
+   scaffold requirement).
+2. No `TODO`/stub implementations remain in any file created in phases 1-7
+   — `grep -rn "TODO" app/src/main/java` returns nothing from this
+   project's own code.
+3. `git log` shows a real commit backing every phase above (cross-check
+   against `state.json`'s `last_commit_sha` history if available).
+4. Only once ALL of the above are true does Hermes set
+   `architecture_complete: true` in `state.json`. This is the ONLY
+   condition under which CI/build-error monitoring (MAINTAIN MODE) begins.
+
+---
+
+## Non-negotiable rules for every phase (carried over, still apply)
+- Full working implementation only — no stubs, no TODOs, no placeholder/
+  fake logic left in committed code. See "No stubs, no placeholders" above.
+- Never modify `app/src/main/res/drawable/bg_fab.xml` unless the task is
+  specifically about the FAB button.
+- Never modify a file in this cycle that wasn't read in this same cycle.
+- One bounded unit of work per cycle — do not attempt an entire phase in
+  a single cycle. Prefer a smaller fully-working piece over a larger
+  half-working one.
+- Commit and push immediately after each file write, before starting the
+  next file.
