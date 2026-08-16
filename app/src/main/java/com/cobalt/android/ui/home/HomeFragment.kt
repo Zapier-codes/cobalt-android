@@ -50,6 +50,20 @@ class HomeFragment : Fragment() {
             binding.tvStatus.text = message
             binding.tvStatus.visibility = if (message.isNullOrBlank()) View.GONE else View.VISIBLE
         }
+
+        // Phase 4: disable the submit button and field while a real
+        // network resolve is in flight, so a slow/unreachable instance
+        // can't be double-submitted.
+        viewModel.isResolving.observe(viewLifecycleOwner) { resolving ->
+            binding.btnSubmit.isEnabled = !resolving
+            binding.etLinkInput.isEnabled = !resolving
+        }
+
+        // resolveResult itself isn't rendered yet — Phase 6 builds the
+        // actual resolution-picker UI on top of it. This phase's job is
+        // only to guarantee the data is real and present in the
+        // ViewModel; no observer is needed here beyond what statusMessage
+        // already surfaces to the user.
     }
 
     override fun onDestroyView() {
