@@ -14,6 +14,10 @@
     <string name="shortcut_open_queue">Open Queue</string>
     <string name="tab_active">active</string>
     <string name="tab_history">history</string>
+    <string name="tab_liked">liked</string>
+    <string name="settings_view_history">history &amp; likes</string>
+    <string name="no_history_yet">nothing watched or downloaded yet</string>
+    <string name="no_liked_yet">no liked Shorts yet</string>
     <string name="action_open">open</string>
     <string name="action_share">share</string>
     <string name="action_retry">retry</string>

@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.activityViewModels
 import com.cobalt.android.databinding.SheetSettingsBinding
+import com.cobalt.android.ui.history.HistoryFragment
 import com.cobalt.android.util.SettingsRepository
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 
@@ -47,6 +48,9 @@ class SettingsSheet : BottomSheetDialogFragment() {
                     data = Uri.parse("package:${requireContext().packageName}")
                 }
             )
+        }
+        binding.btnHistory.setOnClickListener {
+            HistoryFragment.newInstance().show(parentFragmentManager, HistoryFragment.TAG)
         }
         binding.btnClearHistory.setOnClickListener {
             viewModel.clearHistory()

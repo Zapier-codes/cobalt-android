@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/cobalt_surface_sidebar"
+    android:minHeight="200dp">
+
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"
+        android:background="@color/cobalt_input_border" />
+
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        app:tabGravity="fill"
+        app:tabMode="fixed"
+        app:tabTextColor="@color/cobalt_text_secondary"
+        app:tabSelectedTextColor="@color/cobalt_text_primary"
+        app:tabIndicatorColor="@color/cobalt_accent_blue"
+        app:tabBackground="@android:color/transparent"
+        android:background="@color/cobalt_surface_sidebar"
+        app:tabTextAppearance="@style/TextAppearance.Cobalt.Mono" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:paddingBottom="16dp" />
+
+    <TextView
+        android:id="@+id/tvEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:gravity="center"
+        android:textColor="@color/cobalt_text_secondary"
+        android:fontFamily="@font/ibm_plex_mono_regular"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+</LinearLayout>

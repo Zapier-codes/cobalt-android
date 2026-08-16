@@ -100,6 +100,17 @@
             app:strokeColor="@color/cobalt_input_border" />
 
         <Button
+            android:id="@+id/btnHistory"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/settings_view_history"
+            android:textColor="@color/cobalt_text_primary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            app:strokeColor="@color/cobalt_input_border" />
+
+        <Button
             android:id="@+id/btnClearHistory"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
