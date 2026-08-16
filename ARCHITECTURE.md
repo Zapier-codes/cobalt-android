@@ -548,21 +548,34 @@ tap-to-play against a real completed download before trusting this further.
 
 ---
 
-### Phase 9 — History & Likes: entities + DAOs
-**Files:**
-- `app/src/main/java/com/cobalt/android/db/entities/HistoryEntity.kt`
-- `app/src/main/java/com/cobalt/android/db/entities/LikedEntity.kt`
-- `app/src/main/java/com/cobalt/android/db/daos/HistoryDao.kt`
-- `app/src/main/java/com/cobalt/android/db/daos/LikedDao.kt`
+### Phase 9 — History & Likes: entities + DAOs ✅ done
+**Files (actual — matches spec):**
+- `app/src/main/java/com/cobalt/android/db/entities/HistoryEntity.kt` —
+  one table for both surfaces (`HistoryItemType.SHORT_WATCH` /
+  `.DOWNLOAD`) rather than two, so Phase 11's `HistoryFragment` can query
+  one merged, most-recent-first timeline instead of stitching two tables
+  together. `itemType`/enum stored as a plain `String`, same convention
+  `ShortsCacheEntity.streamKind`/`.source` already use — no `TypeConverters`
+  needed.
+- `app/src/main/java/com/cobalt/android/db/entities/LikedEntity.kt` —
+  keyed by the same `videoId` `ShortItem`/`ShortsCacheEntity` use.
+- `app/src/main/java/com/cobalt/android/db/daos/HistoryDao.kt`,
+  `app/src/main/java/com/cobalt/android/db/daos/LikedDao.kt`.
 
 **Definition of Done:**
-1. Entities + DAOs exist and are wired into a real database (extend
-   `DownloadDatabase.kt` if you decide history/likes belong with downloads,
-   or justify a separate database in this file if not — either is
-   defensible, but state the choice explicitly, matching the precedent set
-   in Phase 2/5 above).
-2. No UI wiring yet — that's Phases 10–11. This phase is data-layer only,
-   scoped small on purpose per the 20-phase restructure.
+1. ✅ Entities + DAOs exist, wired into `DownloadDatabase.kt` (schema
+   version 2→3, real `Migration`) — **not** a new database and **not**
+   `ShortsDatabase`. Explicit choice: `ShortsDatabase` (Phase 2) is a
+   deliberately evictable *cache* — rows expire and get dropped. History
+   and likes are permanent user data, the same durability class as
+   `DownloadRecord`/`ResolutionCacheEntity` already in `DownloadDatabase`,
+   so they belong there.
+2. ✅ No UI or write-side wiring yet, by design — `ShortsFragment`,
+   `ShortsViewModel`, and `DownloadService`/`DownloadRepository` don't
+   reference `HistoryDao`/`LikedDao` yet. That's Phase 10.
+
+**Known limitation:** not built/run against a real Android toolchain in
+this session — same standing caveat as every phase since Phase 4.
 
 ---
 
