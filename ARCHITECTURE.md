@@ -321,28 +321,31 @@ Central).
 
 ---
 
-### Phase 3 — Home screen shell + paste-link UI (no network yet)
+### Phase 3 — Home screen shell + paste-link UI (no network yet) ✅ done (Session 5)
 **Files:**
-- `app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt`
-- `app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt`
-- `app/src/main/res/layout/fragment_home.xml` — top search/paste-link bar +
-  a feed area below it (can be empty/placeholder-in-layout-only at this
-  stage — the *screen* existing is this phase's job; making it do
-  something real is Phase 4). **No `WebView`** — replaces the current
-  placeholder (`tvPlaceholder` + a stray `TODO` comment).
+- `ui/home/HomeFragment.kt`, `ui/home/HomeViewModel.kt` (moved to the
+  spec-correct `ui/home/` package; the old `ui/HomeFragment.kt` is deleted)
+- `res/layout/fragment_home.xml` — real `TextInputLayout` paste-link field +
+  submit button + status line + a reserved (currently empty) feed container.
+  Also removed a dead `<data><variable ...></data>` data-binding block this
+  file had — the project only enables `viewBinding` in `build.gradle.kts`,
+  not `dataBinding`, so that block was inert and never actually functioned;
+  found while touching this file, not introduced by it.
 
 **Definition of Done:**
-1. Home screen has a visible paste-link/search entry field distinct from
-   the Shorts feed, reachable from the bottom nav.
-2. `HomeFragment` reads the `pending_url` nav argument on launch (set by
-   `MainActivity.submitUrl()` for share-intent/clipboard/shortcut-triggered
-   URLs — see Phase 1 item 5) and populates the paste-link field with it
-   (auto-*submitting* it is Phase 4's job, once there's a real resolver to
-   submit to — don't fake a submit here).
-3. Typing/pasting a URL and pressing submit currently may no-op or show a
-   "not yet implemented" state **in the UI only** — that's honest scaffolding
-   for a screen whose next phase isn't built yet, which is different from a
-   stub pretending to work. Do not fake a network response here.
+1. ✅ Home screen has a visible paste-link field (`etLinkInput`) distinct from
+   the Shorts feed, reachable via the bottom nav (already wired — this phase
+   didn't touch nav_graph.xml's destination list, only the fragment class it
+   points at).
+2. ✅ `HomeFragment` reads the `pending_url` nav argument on launch (set by
+   `MainActivity.submitUrl()`) and populates the paste-link field with it via
+   `HomeViewModel.setPendingUrl()`.
+3. ✅ Submitting currently shows a real, honest status message — "Link
+   resolution isn't implemented yet (Phase 4)." — rather than faking a
+   network response. Basic input validation (empty / not http(s)) also
+   surfaces real, distinct messages. This is intentionally *not* wired to
+   any resolver yet; that's Phase 4's job specifically so it can be a real
+   network call from the start per "No stubs, no placeholders" above.
 
 ---
 

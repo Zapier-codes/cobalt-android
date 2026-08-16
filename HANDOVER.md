@@ -7,11 +7,14 @@ changed and why, not what's guaranteed to still be true by the time you
 read it.
 
 **This file itself should now be committed at the repo root as
-`HANDOVER.md`.** If you don't find it there, the patch from this session
-hasn't been applied/pushed yet — stop and flag that before assuming Session
-5's work (including this document) is live. See "Verify this landed" below.
+`HANDOVER.md`.** If you don't find it there, this session's work hasn't
+landed yet — stop and flag that before assuming any of it is live. See
+"Verify this landed" below.
 
 ## What Session 5 actually did
+
+This session ran across two pushes, both confirmed landed on `origin/master`
+before the next piece of work started (see "Verify this landed"):
 
 1. **Confirmed Session 4's work landed** before starting anything new: cloned
    fresh, verified commit `743ba46` (Session 4's WebView-removal + badge-fix
@@ -29,11 +32,11 @@ hasn't been applied/pushed yet — stop and flag that before assuming Session
    - `androidx.viewpager2:viewpager2` was never added to
      `app/build.gradle.kts` despite `fragment_shorts.xml` already declaring a
      `ViewPager2` — a second, independent compile break.
-3. **Completed Phase 2 (Shorts feed) for real**, per explicit user direction
-   that the feed must merge three sources — Innertube (direct), NewPipe
-   (NewPipeExtractor), and public Invidious instances — cyclically, so no
-   single backend dying empties the feed, and with enough real volume that
-   the feed doesn't run dry after a screen or two of scrolling.
+3. **Completed Phase 2 (Shorts feed) for real** — pushed as commit `778b098`
+   — per explicit user direction that the feed must merge three sources
+   (Innertube direct, NewPipeExtractor, public Invidious instances)
+   cyclically, with search-based volume (see "Shorts feed design" below) so
+   no single backend dying or having a thin trending list empties the feed.
 4. **Restructured `ARCHITECTURE.md` from 8 phases to 20**, per explicit user
    direction, so a single session can realistically finish a phase's
    Definition of Done in one sitting instead of leaving `state.json` and the
@@ -41,11 +44,36 @@ hasn't been applied/pushed yet — stop and flag that before assuming Session
    were dropped — every file and Definition-of-Done bullet from the 8-phase
    version now lives somewhere in the 20-phase version (see the "Restructured
    from 8 phases to 20" note directly under "Build Sequencing" in
-   `ARCHITECTURE.md` for the old→new phase mapping).
-5. **Committed locally, NOT pushed** — same constraint as Session 4: no push
-   credentials were available in the sandbox this session ran in. A
-   `git am`-compatible patch was produced for you to apply and push from your
-   own device (see below).
+   `ARCHITECTURE.md` for the old→new phase mapping). Also part of commit
+   `778b098`.
+5. **Completed Phase 3 (Home screen shell + paste-link UI) for real** — the
+   next commit after `778b098` (check `git log` for its hash, since it may
+   have a different SHA once applied via patch/pushed, same as always).
+   Moved `HomeFragment`/added `HomeViewModel` to `ui/home/`, built a real
+   `TextInputLayout` paste-link field wired to `pending_url`, with an honest
+   "not implemented yet (Phase 4)" status on submit rather than a fake
+   network response. Also found and removed a dead `<data>`/`<variable>`
+   data-binding block in `fragment_home.xml` — the project only has
+   `viewBinding` enabled, not `dataBinding`, so that block never did
+   anything; pre-existing, not introduced this session.
+6. **Pushed directly from a device-side Ubuntu/proot environment this time**
+   (`git am` + `git push` from `/root/projects/vid/cobalt-android`), not via
+   a patch handed to the user for a later manual push — if a future session
+   again has no push credentials in its own sandbox, the same patch-file
+   workflow from Sessions 4–5 still applies; ask the user to confirm which
+   applies before assuming either.
+
+## Verify this landed
+
+```
+cd cobalt-android   # wherever your clone/device path is
+git fetch origin
+git log --oneline origin/master -5
+```
+Expect to see (top of log, most recent first): the Phase 3 commit, then
+`778b098` (Phase 2 + 20-phase restructure), then `743ba46` (Phase 1). If any
+of these are missing from `origin/master`, stop and don't assume that
+phase's work is live in whatever environment you're auditing from.
 
 ## The Shorts feed design, in short (full detail is in ARCHITECTURE.md Phase 2)
 
@@ -55,7 +83,7 @@ Neither NewPipeExtractor nor Invidious has a real "Shorts" endpoint:
 - Invidious's `/api/v1/trending?type=Shorts` filter is a confirmed-broken
   upstream param (iv-org/invidious#2982) that instances generally ignore.
 
-So the actual mechanism, per your direction mid-session, is: all three
+So the actual mechanism, per user direction mid-session, is: all three
 sources run **search** against a shared rotating pool of query terms
 (`shorts/source/ShortsQueryFeeder.kt` — a static seed list of ~30 broad,
 evergreen categories like "funny shorts", "gaming clips", "life hack", cycled
@@ -82,16 +110,17 @@ proper `LikedEntity` doesn't exist until Phase 10, at which point the two
 should be connected — noted in ARCHITECTURE.md Phase 10, don't let it stay
 as two disconnected "liked" concepts).
 
-## Honest limitations of this session's Phase 2 work
+## Honest limitations of this session's work
 
-- **Not compiled or run.** No Android SDK was available in the sandbox this
-  was written in — everything here is structurally correct against the real
-  NewPipeExtractor/Media3/Invidious APIs (verified via web search where I
-  wasn't already confident, not guessed), but **you must actually build this
-  before trusting it further.** This is the single most important thing to
-  do first in Session 6 — see "Immediate next steps."
-- The <=90s duration heuristic will occasionally misclassify a short
-  non-Shorts video as a Short and vice versa. There's no better signal
+- **Not compiled or run.** No Android SDK was available in either sandbox
+  this was written in (this session's cloud sandbox, or confirmed on the
+  device side either) — everything here is structurally correct against the
+  real NewPipeExtractor/Media3/Invidious/AndroidX APIs (verified via web
+  search where not already confident, not guessed), but **you must actually
+  build this before trusting it further.** This is the single most important
+  thing to do first in Session 6 — see "Immediate next steps".
+- The <=90s duration heuristic (Phase 2) will occasionally misclassify a
+  short non-Shorts video as a Short and vice versa. There's no better signal
   available from any of the three backends for search-derived candidates —
   this is a real limitation of the approach, not a bug to "fix" by finding a
   cleverer regex.
@@ -111,33 +140,43 @@ as two disconnected "liked" concepts).
   is explicitly out of scope for this project (Innertube/NewPipe/Invidious
   only, never the official API). Phase 14 also covers making this
   user-editable.
+- Phase 3's `HomeFragment` is intentionally inert beyond input validation —
+  submitting always shows the same "not implemented yet" message regardless
+  of what the link actually is. That's correct for this phase; don't mistake
+  it for a bug when starting Phase 4.
 
 ## Immediate next steps
 
-1. **Clone fresh, confirm this session's commit(s) landed** (see top of this
-   document). If `HANDOVER.md` isn't at the repo root and/or `ARCHITECTURE.md`
-   doesn't show 20 phases, the patch hasn't been applied yet — stop and flag
-   this, don't proceed as if Phase 2 is further along than it actually is.
-2. **Build the project.** This is the first real build attempt since Session
-   5's Phase 2 work — a clean `./gradlew assembleDebug` (or equivalent) has
-   not happened yet. Expect to find and fix compile errors; none of this was
-   verified against an actual Kotlin/Android toolchain. Prioritize this over
-   starting Phase 3.
-3. Once it builds, **run it and actually watch the Shorts tab scroll** for a
-   couple minutes — confirm the three sources are really contributing (log
-   or breakpoint on `ShortsFeedRepository.loadFeed()`'s per-source counts is
-   the fastest way to see this), confirm playback doesn't leak players across
-   swipes, confirm `loadMore()` actually appends instead of duplicating.
-4. **Re-read `ARCHITECTURE.md` in full**, especially the new "Restructured
-   from 8 phases to 20" note and Phase 2's full write-up. Treat it, not any
-   prior session's summary (including this one), as the source of truth for
-   what exists vs. what's genuinely new.
+1. **Verify this session's commits landed** (see "Verify this landed"
+   above). If `HANDOVER.md` isn't at the repo root, or `ARCHITECTURE.md`
+   doesn't show 20 phases with Phases 1-3 marked done, stop and flag this —
+   don't proceed as if the repo is further along than it actually is.
+2. **Build the project.** Neither Phase 2 nor Phase 3's code has been run
+   through a real Kotlin/Android toolchain yet — a clean
+   `./gradlew assembleDebug` (or equivalent) has not happened since this
+   session's work landed. Expect to find and fix compile errors. Prioritize
+   this over starting Phase 4.
+3. Once it builds, **actually run it**:
+   - Watch the Shorts tab scroll for a couple minutes — confirm the three
+     sources are really contributing (log/breakpoint on
+     `ShortsFeedRepository.loadFeed()`'s per-source counts is the fastest way
+     to see this), confirm playback doesn't leak players across swipes,
+     confirm `loadMore()` actually appends instead of duplicating.
+   - Open the Home tab, paste a link, hit submit — confirm you see the
+     "Link resolution isn't implemented yet (Phase 4)." message, and that a
+     shared/clipboard URL arrives pre-filled via `pending_url`.
+4. **Re-read `ARCHITECTURE.md` in full**, especially the "Restructured from
+   8 phases to 20" note and Phases 2–3's write-ups. Treat it, not any prior
+   session's summary (including this one), as the source of truth for what
+   exists vs. what's genuinely new.
 5. **Re-read `state.json` fresh** — same standing caution as every prior
    handover: don't trust any snapshot quoted in a document, including this
    one.
-6. **Start Phase 3** (Home screen shell) once the build is confirmed clean —
-   it's now intentionally small (just the screen + reading `pending_url`,
-   no network) so it should be finishable in one session on its own.
+6. **Start Phase 4** (real `LinkResolverRepository` — an actual OkHttp call
+   to `settings.cobaltInstanceUrl`) once the build is confirmed clean. It's
+   scoped small on purpose (just the repository + wiring `HomeViewModel`'s
+   `onSubmit()` to call it and hold the result — the picker UI itself is
+   Phase 6) so it should be finishable in one session on its own.
 7. **Carried over from sessions 1–4, still not done:**
    - `AGENTS.md` truncation warning (80,689 chars vs 30,720 limit) — check
      if it's losing important instructions.
