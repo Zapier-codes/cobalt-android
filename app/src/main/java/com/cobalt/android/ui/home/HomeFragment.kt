@@ -5,16 +5,21 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.core.widget.addTextChangedListener
 import com.cobalt.android.databinding.FragmentHomeBinding
+import com.cobalt.android.link.LinkResolverRepository
+import com.cobalt.android.ui.downloads.ResolutionPickerDialog
 
 class HomeFragment : Fragment() {
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
-    private val viewModel: HomeViewModel by viewModels()
+    // Activity-scoped (not viewModels()) so ResolutionPickerDialog, shown via
+    // childFragmentManager, reads the same HomeViewModel instance/resolveResult
+    // rather than getting its own separate one.
+    private val viewModel: HomeViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -59,11 +64,16 @@ class HomeFragment : Fragment() {
             binding.etLinkInput.isEnabled = !resolving
         }
 
-        // resolveResult itself isn't rendered yet — Phase 6 builds the
-        // actual resolution-picker UI on top of it. This phase's job is
-        // only to guarantee the data is real and present in the
-        // ViewModel; no observer is needed here beyond what statusMessage
-        // already surfaces to the user.
+        // Phase 6: show the resolution picker once a link resolves.
+        // childFragmentManager (not parentFragmentManager) so the sheet's
+        // lifecycle is tied to this fragment, not the hosting activity.
+        viewModel.resolveResult.observe(viewLifecycleOwner) { result ->
+            if (result is LinkResolverRepository.ResolveResult.Success &&
+                childFragmentManager.findFragmentByTag(ResolutionPickerDialog.TAG) == null
+            ) {
+                ResolutionPickerDialog.newInstance().show(childFragmentManager, ResolutionPickerDialog.TAG)
+            }
+        }
     }
 
     override fun onDestroyView() {

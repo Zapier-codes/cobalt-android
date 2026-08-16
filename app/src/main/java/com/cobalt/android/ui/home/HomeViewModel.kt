@@ -71,8 +71,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             when (val result = repository.resolve(url)) {
                 is LinkResolverRepository.ResolveResult.Success -> {
                     _resolveResult.value = result
-                    _statusMessage.value = "Found ${result.formats.size} format(s). " +
-                        "Resolution picker is coming in Phase 6."
+                    _statusMessage.value = "Found ${result.formats.size} format(s)."
                 }
                 is LinkResolverRepository.ResolveResult.Error -> {
                     _statusMessage.value = result.message
@@ -81,6 +80,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
             _isResolving.value = false
         }
+    }
+
+    /** Phase 6: called by `ResolutionPickerDialog` once a format is picked
+     * (or the sheet is dismissed without picking one), so a stale Success
+     * result doesn't cause the sheet to silently re-show on the next
+     * observe (e.g. after a config change). */
+    fun clearResolveResult() {
+        _resolveResult.value = null
     }
 
     private fun isPlausibleUrl(url: String): Boolean =

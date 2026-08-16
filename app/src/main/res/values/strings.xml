@@ -30,4 +30,5 @@
     <string name="channel_downloads_name">Downloads</string>
     <string name="channel_downloads_desc">Download progress and completion</string>
     <string name="retry_notification_title">Ready to retry</string>
+    <string name="resolution_picker_title">choose a format</string>
 </resources>
