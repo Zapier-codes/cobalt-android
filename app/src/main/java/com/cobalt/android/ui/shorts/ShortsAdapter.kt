@@ -8,7 +8,7 @@ import com.cobalt.android.databinding.ItemShortVideoBinding
 class ShortsAdapter(private val items: List<String>) : RecyclerView.Adapter<ShortsAdapter.ViewHolder>() {
     class ViewHolder(val binding: ItemShortVideoBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(title: String) {
-            binding.title.text = title
+            binding.tvCaption.text = title
         }
     }
 
