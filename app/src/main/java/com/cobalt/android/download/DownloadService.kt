@@ -7,6 +7,9 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import com.cobalt.android.db.HistoryRepository
+import com.cobalt.android.db.entities.HistoryEntity
+import com.cobalt.android.db.entities.HistoryItemType
 import com.cobalt.android.util.NotificationHelper
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
@@ -23,6 +26,7 @@ class DownloadService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + job)
     private val activeCount = AtomicInteger(0)
     private lateinit var repository: DownloadRepository
+    private lateinit var historyRepository: HistoryRepository
     private lateinit var notificationHelper: NotificationHelper
     private lateinit var mediaStoreWriter: MediaStoreWriter
 
@@ -34,6 +38,7 @@ class DownloadService : Service() {
     override fun onCreate() {
         super.onCreate()
         repository = DownloadRepository(this)
+        historyRepository = HistoryRepository(this)
         notificationHelper = NotificationHelper(this)
         mediaStoreWriter = MediaStoreWriter(this)
         // Reset any downloads stuck in DOWNLOADING from a previous process kill
@@ -120,6 +125,7 @@ class DownloadService : Service() {
                     mediaStoreWriter.finalize(opened.uri)
                     repository.updateMediaStoreUri(record.id, opened.uri.toString())
                     repository.updateStatus(record.id, DownloadStatus.COMPLETE)
+                    recordDownloadHistory(record)
                     notificationHelper.showComplete(record.id, record.filename, opened.uri, record.mimeType)
                 } catch (e: Exception) {
                     mediaStoreWriter.delete(opened.uri)
@@ -160,6 +166,7 @@ class DownloadService : Service() {
                 mediaStoreWriter.finalize(opened.uri)
                 repository.updateMediaStoreUri(record.id, opened.uri.toString())
                 repository.updateStatus(record.id, DownloadStatus.COMPLETE)
+                recordDownloadHistory(record)
                 notificationHelper.showComplete(record.id, record.filename, opened.uri, record.mimeType)
             } catch (e: Exception) {
                 mediaStoreWriter.delete(opened.uri)
@@ -173,6 +180,20 @@ class DownloadService : Service() {
             tempFile.delete()   // always clean up temp file
             if (activeCount.decrementAndGet() == 0) stopSelf()
         }
+    }
+
+    // Phase 10: shared by both the HTTPS and blob complete paths so history
+    // covers every way a download reaches Phase 6/7's DownloadService.
+    private suspend fun recordDownloadHistory(record: DownloadRecord) {
+        historyRepository.record(
+            HistoryEntity(
+                itemType = HistoryItemType.DOWNLOAD.name,
+                refId = record.id.toString(),
+                title = record.filename,
+                thumbnailUrl = "",
+                sourceUrl = record.originalUrl
+            )
+        )
     }
 
     private suspend fun handleNetworkFail(record: DownloadRecord) {

@@ -5,6 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.cobalt.android.db.HistoryRepository
+import com.cobalt.android.db.LikedRepository
+import com.cobalt.android.db.entities.HistoryEntity
+import com.cobalt.android.db.entities.HistoryItemType
+import com.cobalt.android.db.entities.LikedEntity
 import com.cobalt.android.download.DownloadService
 import com.cobalt.android.shorts.ShortsFeedRepository
 import com.cobalt.android.shorts.model.ShortItem
@@ -13,6 +18,8 @@ import kotlinx.coroutines.launch
 class ShortsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = ShortsFeedRepository(application)
+    private val historyRepository = HistoryRepository(application)
+    private val likedRepository = LikedRepository(application)
 
     private val _shorts = MutableLiveData<List<ShortItem>>(emptyList())
     val shorts: LiveData<List<ShortItem>> = _shorts
@@ -56,7 +63,44 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
         _shorts.value = _shorts.value.orEmpty().map {
             if (it.videoId == item.videoId) it.copy(isLiked = newLiked) else it
         }
-        viewModelScope.launch { repository.setLiked(item.videoId, newLiked) }
+        viewModelScope.launch {
+            repository.setLiked(item.videoId, newLiked)
+            // Phase 10: ShortsCacheEntity.isLiked (above) is cache-local and
+            // gets evicted with the rest of the cache row — LikedEntity is
+            // the durable record, connecting Phase 2's flag to Phase 9's
+            // table rather than leaving two disconnected "liked" concepts.
+            if (newLiked) {
+                likedRepository.like(
+                    LikedEntity(
+                        videoId = item.videoId,
+                        title = item.title,
+                        authorName = item.authorName,
+                        thumbnailUrl = item.thumbnailUrl,
+                        watchUrl = item.watchUrl
+                    )
+                )
+            } else {
+                likedRepository.unlike(item.videoId)
+            }
+        }
+    }
+
+    /**
+     * Phase 10: called from `ShortsFragment.playAt()` when a Short actually
+     * starts playing, writing the History row Phase 9's table exists for.
+     */
+    fun recordWatch(item: ShortItem) {
+        viewModelScope.launch {
+            historyRepository.record(
+                HistoryEntity(
+                    itemType = HistoryItemType.SHORT_WATCH.name,
+                    refId = item.videoId,
+                    title = item.title,
+                    thumbnailUrl = item.thumbnailUrl,
+                    sourceUrl = item.watchUrl
+                )
+            )
+        }
     }
 
     /**
@@ -82,3 +126,4 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
     private fun sanitizeFilename(title: String): String =
         title.take(60).replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "short" }
 }
+

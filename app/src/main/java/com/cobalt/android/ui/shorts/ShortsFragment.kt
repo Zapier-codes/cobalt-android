@@ -122,6 +122,7 @@ class ShortsFragment : Fragment() {
         exo.prepare()
         exo.playWhenReady = true
         currentlyBoundPosition = position
+        viewModel.recordWatch(item)
     }
 
     private fun shareShort(item: ShortItem) {
