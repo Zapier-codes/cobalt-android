@@ -349,25 +349,71 @@ Central).
 
 ---
 
-### Phase 4 — Real link resolution (LinkResolverRepository)
-**Files:**
-- `app/src/main/java/com/cobalt/android/repository/LinkResolverRepository.kt`
-  — takes a pasted URL, calls the cobalt instance API directly (OkHttp,
-  `settings.cobaltInstanceUrl` from `SettingsRepository`) to resolve
-  available formats/resolutions. This is a real network call from the
-  start — there is no WebView fallback to lean on anymore, so this cannot
-  be stubbed even temporarily without violating "no stubs, no
-  placeholders" above.
+### Phase 4 — Real link resolution (LinkResolverRepository) ✅ done (Session 6)
+**Files (actual paths — differ from the original spec below, see note):**
+- `app/src/main/java/com/cobalt/android/link/LinkResolverRepository.kt` —
+  a Phase-3-era placeholder version of this file already existed at this
+  path (added out of sequence, before Phase 3 landed) with a blocking,
+  non-coroutine `execute()` call against a `{instance}/api/resolve?url=`
+  GET contract that doesn't match any real cobalt instance. This phase
+  rewrote it: `suspend fun resolve(url): ResolveResult` (sealed
+  `Success`/`Error`), run on `Dispatchers.IO` via `withContext`, POSTing
+  JSON to `{instance}/` per the real cobalt v7+ API contract
+  (`docs/api.md` in imputnet/cobalt) and handling all of `error`,
+  `rate-limit`, `picker`, `redirect`, `tunnel`, `stream`, and
+  `local-processing` statuses — see in-file doc comment for the full
+  contract this assumes.
+- `app/src/main/java/com/cobalt/android/ui/home/HomeViewModel.kt` — moved
+  from plain `ViewModel` to `AndroidViewModel` (needs a `Context` for
+  `LinkResolverRepository`/`SettingsRepository`, same reason
+  `ShortsViewModel` is an `AndroidViewModel`). `onSubmit()` now launches a
+  real `repository.resolve(url)` call in `viewModelScope`, exposes
+  `isResolving: LiveData<Boolean>` and `resolveResult:
+  LiveData<ResolveResult?>` in addition to the existing `statusMessage`.
+- `app/src/main/java/com/cobalt/android/ui/home/HomeFragment.kt` —
+  observes `isResolving` to disable the submit button/field while a
+  resolve is in flight (prevents double-submit against a slow/unreachable
+  instance). Does **not** yet render `resolveResult` — that's Phase 6's
+  resolution-picker UI; this phase's job is only to guarantee the data is
+  real and present in the ViewModel, not to display it.
+
+**Note on the pre-existing file location:** the original spec above named
+`repository/LinkResolverRepository.kt`; the file that actually existed
+(added in commit `957411f`, before Phase 3) lives at
+`link/LinkResolverRepository.kt` instead. Kept the existing path rather
+than moving it — no functional reason to relocate it, and moving it would
+have been a second unrelated change bundled into this phase.
 
 **Definition of Done:**
-1. Submitting a link from Phase 3's UI (manually or via `pending_url`)
-   invokes `LinkResolverRepository` with a real HTTP call — not a
+1. ✅ Submitting a link from Phase 3's UI (manually or via `pending_url`)
+   invokes `LinkResolverRepository.resolve()` with a real HTTP POST — not a
    TODO/comment.
-2. A successful resolve is held in `HomeViewModel` state ready for Phase 6
-   to display — the actual picker UI is Phase 6, but the data must really be
-   there, not mocked.
-3. Resolution failures (bad URL, unreachable instance) surface a real error
-   state to the user, not a silent no-op.
+2. ✅ A successful resolve is held in `HomeViewModel.resolveResult` ready for
+   Phase 6 to display — the actual picker UI is still Phase 6, but the data
+   is real (parsed from a real HTTP response), not mocked.
+3. ✅ Resolution failures (bad URL, unreachable instance, HTTP error,
+   unparseable body, rate-limit, empty picker) each surface a distinct,
+   real error message via `statusMessage` — not a silent no-op or one
+   generic "something went wrong".
+
+**Known limitations, honestly stated (see HANDOVER for the full list):**
+- **Not verified against a live cobalt instance.** This sandbox has no
+  network egress to arbitrary hosts (only a fixed domain allowlist —
+  github.com, pypi.org, npmjs.com, etc. — no `cobalt.tools` or any other
+  self-hosted instance), so the request/response handling is structurally
+  correct against the *documented* API contract but has not actually been
+  exercised against a real server this session. Confirm this against a
+  live instance before trusting it further — see HANDOVER "Immediate next
+  steps".
+- The API contract assumes a cobalt v7+-style instance. Older instances
+  (pre-API-rewrite) use a different response shape entirely; this
+  repository does not attempt to detect or support those.
+- `filenameFromUrl()`'s extension/MIME-type guessing is a best-effort
+  fallback for when an instance's response omits `filename` — it is not a
+  substitute for a real `Content-Type`/`Content-Disposition` header read,
+  which this phase does not add (the resolve call only reads the JSON
+  body, not headers). Revisit if Phase 6 testing shows filenames/mime
+  types coming through wrong often enough to matter.
 
 ---
 
