@@ -579,18 +579,30 @@ this session — same standing caveat as every phase since Phase 4.
 
 ---
 
-### Phase 10 — History & Likes: real write-side integration
+### Phase 10 — History & Likes: real write-side integration ✅ done
+**Files (actual):**
+- `app/src/main/java/com/cobalt/android/db/HistoryRepository.kt`,
+  `LikedRepository.kt` — thin wrappers over Phase 9's DAOs, deliberately
+  taking pre-built entities rather than domain objects (`ShortItem`,
+  `DownloadRecord`) so the repositories stay free of `shorts`/`download`
+  package imports; callers build the row.
+- `ShortsViewModel.kt` — `recordWatch(item)` writes a `HistoryEntity`;
+  `toggleLike()` now also upserts/deletes a `LikedEntity` alongside the
+  existing cache-local `ShortsCacheEntity.isLiked` write.
+- `ShortsFragment.kt` — `playAt()` calls `viewModel.recordWatch(item)` right
+  after a Short actually starts playing (once per swipe-to-item, not
+  deduped further — acceptable per this phase's scope).
+- `DownloadService.kt` — a shared `recordDownloadHistory()` helper, called
+  from both `processHttps()` and `processBlob()` right after
+  `DownloadStatus.COMPLETE` is set, so history covers both entry points.
+
 **Definition of Done:**
-1. Watching a Shorts item (Phase 2) writes a `HistoryEntity` row — real
-   integration into `ShortsFragment`/`ShortsViewModel`, not a standalone
-   unused DAO.
-2. Completing a download (Phase 6/7) writes a `HistoryEntity` row too, so
-   history covers both surfaces.
-3. Tapping "like" on a Shorts item (the icon rail from Phase 2, currently
-   writing only to `ShortsCacheEntity.isLiked`) **also** writes a
-   `LikedEntity` row — Phase 2's cache-local like flag was intentionally
-   scoped that way because `LikedEntity` didn't exist yet; this phase
-   connects the two rather than leaving two disconnected "liked" concepts.
+1. ✅ Watching a Shorts item writes a `HistoryEntity` row — real integration
+   in `ShortsFragment`/`ShortsViewModel`, not a standalone unused DAO.
+2. ✅ Completing a download writes a `HistoryEntity` row too (both the
+   HTTPS and blob paths).
+3. ✅ Liking a Shorts item also writes a `LikedEntity` row, connecting
+   Phase 2's cache-local flag to Phase 9's durable table.
 
 ---
 
