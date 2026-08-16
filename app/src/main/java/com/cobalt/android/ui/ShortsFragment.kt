@@ -13,7 +13,15 @@ class ShortsFragment : Fragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         _binding = FragmentShortsBinding.inflate(inflater, container, false)
-        return binding.root
+        val view = binding.root
+        val viewModel = ViewModelProvider(this).get(ShortsViewModel::class.java)
+        // Observe shorts data and set up adapter
+        viewModel.shorts.observe(viewLifecycleOwner) { list ->
+            binding.vpShorts.adapter = ShortsAdapter(list)
+        }
+        // Provide initial data if no observer yet
+        binding.vpShorts.adapter = ShortsAdapter(listOf("Loading..."))
+        return view
     }
 
     override fun onDestroyView() {
