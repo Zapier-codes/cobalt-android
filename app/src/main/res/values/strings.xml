@@ -18,6 +18,8 @@
     <string name="action_share">share</string>
     <string name="action_retry">retry</string>
     <string name="action_cancel">cancel</string>
+    <string name="action_close">close</string>
+    <string name="player_error_unplayable">couldn\'t play this file</string>
     <string name="settings_cobalt_url">cobalt instance</string>
     <string name="settings_audio_only">audio-only mode</string>
     <string name="settings_clipboard_trigger">clipboard trigger</string>

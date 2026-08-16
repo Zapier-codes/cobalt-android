@@ -17,6 +17,18 @@
         <item name="colorSurface">@color/cobalt_surface_sidebar</item>
     </style>
 
+    <!-- Phase 8: full-bleed, no-title dialog theme for VideoPlayerDialogFragment,
+         edge-to-edge like the Shorts player it reuses ExoPlayer/Media3 from. -->
+    <style name="Theme.Cobalt.FullScreenDialog" parent="Theme.Material3.Dark">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@color/cobalt_background</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+
     <style name="TextAppearance.Cobalt.Mono" parent="TextAppearance.Material3.BodyMedium">
         <item name="fontFamily">@font/ibm_plex_mono_regular</item>
         <item name="android:fontFamily">@font/ibm_plex_mono_regular</item>

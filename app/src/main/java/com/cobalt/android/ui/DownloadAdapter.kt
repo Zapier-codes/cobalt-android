@@ -14,7 +14,8 @@ import com.cobalt.android.download.DownloadStatus
 
 class DownloadAdapter(
     private val onRetry: (DownloadRecord) -> Unit,
-    private val onCancel: (DownloadRecord) -> Unit
+    private val onCancel: (DownloadRecord) -> Unit,
+    private val onPlay: (DownloadRecord) -> Unit
 ) : ListAdapter<DownloadRecord, DownloadAdapter.VH>(DIFF) {
 
     inner class VH(val binding: ItemDownloadBinding) : RecyclerView.ViewHolder(binding.root)
@@ -61,7 +62,15 @@ class DownloadAdapter(
                     val mb = if (record.totalBytes > 0) "%.1f MB · ".format(record.totalBytes / 1_048_576.0) else ""
                     tvStatus.text = "${mb}saved"
                     btnOpen.visibility = View.VISIBLE
-                    btnOpen.setOnClickListener { openFile(holder.binding.root.context, record) }
+                    btnOpen.setOnClickListener {
+                        if (record.mimeType.startsWith("video/") && record.mediaStoreUriString.isNotBlank()) {
+                            // Phase 8: play locally via the in-app player instead of
+                            // handing off to whatever system app claims the MIME type.
+                            onPlay(record)
+                        } else {
+                            openFile(holder.binding.root.context, record)
+                        }
+                    }
                 }
                 DownloadStatus.FAILED -> {
                     tvStatus.text = "failed"

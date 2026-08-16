@@ -32,7 +32,11 @@ class DownloadQueueSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         adapter = DownloadAdapter(
             onRetry = { record -> onRetry?.invoke(record) },
-            onCancel = { /* future: cancel in-progress download */ }
+            onCancel = { /* future: cancel in-progress download */ },
+            onPlay = { record ->
+                VideoPlayerDialogFragment.newInstance(record.mediaStoreUriString)
+                    .show(parentFragmentManager, VideoPlayerDialogFragment.TAG)
+            }
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
