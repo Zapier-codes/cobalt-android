@@ -11,6 +11,7 @@ import com.cobalt.android.databinding.SheetResolutionPickerBinding
 import com.cobalt.android.download.DownloadService
 import com.cobalt.android.link.LinkResolverRepository
 import com.cobalt.android.ui.home.HomeViewModel
+import com.cobalt.android.util.SettingsRepository
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 
 /**
@@ -26,6 +27,18 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
  * Shorts "save" action — so both paths converge on one download engine,
  * not two (see ARCHITECTURE.md "Unified enhancement, NOT a parallel
  * rebuild").
+ *
+ * Phase 14: honors `SettingsRepository.defaultDownloadFormat`. Since this
+ * app's `ResolvedFormat.label` is a format *type* ("video"/"audio"/"photo
+ * N"), not a quality ladder (see `SettingsRepository.DownloadFormatPreference`
+ * KDoc), "pre-select" means: if the user has a non-ASK preference and
+ * exactly one resolved format matches that type, skip the sheet entirely
+ * and download it immediately — matching how a real "default format"
+ * setting behaves in comparable downloader apps, not just a highlighted
+ * list item the user still has to tap. If the preference doesn't
+ * unambiguously match (zero or multiple candidates — e.g. a link that only
+ * ever resolves to a photo), the full list is shown as before, sorted so
+ * the preferred type (if present at all) sorts first.
  */
 class ResolutionPickerDialog : BottomSheetDialogFragment() {
 
@@ -49,22 +62,51 @@ class ResolutionPickerDialog : BottomSheetDialogFragment() {
             return
         }
 
-        val adapter = ResolutionFormatAdapter { format ->
-            DownloadService.startHttps(
-                ctx = requireContext().applicationContext,
-                cobaltUrl = format.url,
-                filename = format.filename,
-                mimeType = format.mimeType,
-                cookies = "",
-                userAgent = "",
-                originalUrl = result.originalUrl
-            )
-            viewModel.clearResolveResult()
-            dismiss()
+        val preference = SettingsRepository(requireContext()).defaultDownloadFormat
+        val preferredLabel = when (preference) {
+            SettingsRepository.DownloadFormatPreference.VIDEO -> "video"
+            SettingsRepository.DownloadFormatPreference.AUDIO -> "audio"
+            SettingsRepository.DownloadFormatPreference.ASK -> null
         }
+
+        if (preferredLabel != null) {
+            val matches = result.formats.filter { it.label.equals(preferredLabel, ignoreCase = true) }
+            if (matches.size == 1) {
+                // Exactly one candidate for the preferred type — this is
+                // what "default format" means: skip the sheet, download
+                // now. No tap required.
+                downloadAndClose(matches.first(), result.originalUrl)
+                return
+            }
+            // Zero or multiple matches (e.g. a photo-only resolve, or a
+            // future format that resolves multiple "video" entries) —
+            // ambiguous, fall through to a normal list, just reordered.
+        }
+
+        val orderedFormats = if (preferredLabel != null) {
+            result.formats.sortedByDescending { it.label.equals(preferredLabel, ignoreCase = true) }
+        } else {
+            result.formats
+        }
+
+        val adapter = ResolutionFormatAdapter { format -> downloadAndClose(format, result.originalUrl) }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
-        adapter.submitList(result.formats)
+        adapter.submitList(orderedFormats)
+    }
+
+    private fun downloadAndClose(format: LinkResolverRepository.ResolvedFormat, originalUrl: String) {
+        DownloadService.startHttps(
+            ctx = requireContext().applicationContext,
+            cobaltUrl = format.url,
+            filename = format.filename,
+            mimeType = format.mimeType,
+            cookies = "",
+            userAgent = "",
+            originalUrl = originalUrl
+        )
+        viewModel.clearResolveResult()
+        dismiss()
     }
 
     override fun onDismiss(dialog: DialogInterface) {

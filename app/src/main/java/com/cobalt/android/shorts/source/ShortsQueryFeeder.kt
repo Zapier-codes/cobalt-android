@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object ShortsQueryFeeder {
 
-    private val SEED_QUERIES = listOf(
+    private val DEFAULT_SEED_QUERIES = listOf(
         "shorts", "funny shorts", "trending shorts", "viral video",
         "life hack", "satisfying video", "cooking shorts", "gaming clips",
         "music shorts", "dance trend", "sports highlights", "news shorts",
@@ -34,7 +34,32 @@ object ShortsQueryFeeder {
         "beauty tips", "pet shorts"
     )
 
+    /**
+     * Phase 14: the pool `nextQueries` actually rotates through. Starts as
+     * [DEFAULT_SEED_QUERIES]; [applyCustomQueries] swaps it. `@Volatile`
+     * because this is written from the main thread (Settings save,
+     * `CobaltApplication.onCreate`) and read from `Dispatchers.IO` (every
+     * `InvidiousShortsSource`/`NewPipeShortsSource` fetch).
+     */
+    @Volatile
+    private var activeQueries: List<String> = DEFAULT_SEED_QUERIES
+
     private val cursor = AtomicInteger(0)
+
+    /**
+     * Swaps the active query pool. An empty list resets to
+     * [DEFAULT_SEED_QUERIES] — this is the fallback for
+     * `SettingsRepository.customShortsQueries` being unset, so callers
+     * don't need their own empty-check before calling this. Resets the
+     * rotation cursor too, so a newly-applied pool starts from its own
+     * beginning instead of continuing at whatever offset the previous
+     * pool's cursor had reached (which could be out of bounds for a
+     * shorter custom pool, or just a confusing starting point).
+     */
+    fun applyCustomQueries(queries: List<String>) {
+        activeQueries = queries.ifEmpty { DEFAULT_SEED_QUERIES }
+        cursor.set(0)
+    }
 
     /**
      * Returns the next [count] queries in rotation (wrapping around), so
@@ -42,9 +67,10 @@ object ShortsQueryFeeder {
      * of hammering the same 2-3 terms every time.
      */
     fun nextQueries(count: Int): List<String> {
+        val pool = activeQueries
         val start = cursor.getAndAdd(count)
         return (0 until count).map { i ->
-            SEED_QUERIES[(start + i).mod(SEED_QUERIES.size)]
+            pool[(start + i).mod(pool.size)]
         }
     }
 }

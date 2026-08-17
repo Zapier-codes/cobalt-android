@@ -2,6 +2,7 @@ package com.cobalt.android
 
 import android.app.Application
 import androidx.work.Configuration
+import com.cobalt.android.shorts.source.ShortsQueryFeeder
 import com.cobalt.android.util.NotificationHelper
 import com.cobalt.android.util.SettingsRepository
 import com.cobalt.android.util.ThemeApplier
@@ -16,7 +17,13 @@ class CobaltApplication : Application(), Configuration.Provider {
         // DynamicColors.applyToActivitiesIfAvailable() both need to run
         // ahead of the first Activity's onCreate() to take effect on
         // launch without a visible flash/recreate.
-        ThemeApplier.apply(this, SettingsRepository(this).themeMode)
+        val settings = SettingsRepository(this)
+        ThemeApplier.apply(this, settings.themeMode)
+        // Phase 14: apply any persisted custom Shorts seed-query pool
+        // before the Shorts tab can possibly be opened. An empty stored
+        // list is handled inside applyCustomQueries (falls back to the
+        // shipped default), so no empty-check is needed here.
+        ShortsQueryFeeder.applyCustomQueries(settings.customShortsQueries)
     }
 
     override val workManagerConfiguration: Configuration

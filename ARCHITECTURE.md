@@ -722,16 +722,63 @@ this session — same standing caveat as every phase since Phase 4.
 
 ---
 
-### Phase 14 — Settings: wiring into resolution defaults + Shorts sources
+### Phase 14 — Settings: wiring into resolution defaults + Shorts sources ✅ done
+**Files (actual):**
+- `app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt`
+  — reads `SettingsRepository.defaultDownloadFormat`. Since `ResolvedFormat
+  .label` is a format *type* ("video"/"audio"/"photo N"), not a quality
+  ladder (see Phase 12's naming-gap note), "pre-select" means: if the
+  preference is non-ASK and exactly one resolved format matches that type,
+  skip the sheet and download immediately (real default behavior, not a
+  highlighted item the user still has to tap). Zero or multiple matches —
+  e.g. a photo-only resolve — falls through to the normal list, sorted so
+  the preferred type sorts first when present.
+- `app/src/main/java/com/cobalt/android/util/SettingsRepository.kt` — two
+  new persisted properties: `invidiousInstances` (newline-separated,
+  defaults to `InvidiousShortsSource.DEFAULT_INSTANCES` when unset/empty)
+  and `customShortsQueries` (newline-separated, empty is itself a valid
+  "use shipped default" value — the fallback lives in
+  `ShortsQueryFeeder.applyCustomQueries`, not here).
+- `app/src/main/java/com/cobalt/android/shorts/source/ShortsQueryFeeder.kt`
+  — the seed list is now `DEFAULT_SEED_QUERIES` plus a `@Volatile
+  activeQueries` the rotation actually reads, swappable via
+  `applyCustomQueries(queries)` (empty list resets to default, cursor
+  resets to 0 so a shorter/different pool doesn't start at a stale/
+  out-of-bounds offset).
+- `app/src/main/java/com/cobalt/android/shorts/ShortsFeedRepository.kt` —
+  `constructor(context)` now passes `SettingsRepository(context)
+  .invidiousInstances` into `InvidiousShortsSource(instances = ...)`
+  instead of the hardcoded default. Takes effect next time the repository
+  is constructed (app start, or next time the Shorts tab creates a fresh
+  `ShortsViewModel`) — same "not live-patched into an already-running
+  feed" contract Phase 12 already documented for `downloadLocation`.
+- `app/src/main/java/com/cobalt/android/CobaltApplication.kt` — calls
+  `ShortsQueryFeeder.applyCustomQueries(settings.customShortsQueries)` at
+  process start, alongside the existing `ThemeApplier.apply(...)` call.
+- `app/src/main/java/com/cobalt/android/ui/SettingsFragment.kt` (
+  `app/src/main/res/layout/fragment_settings.xml`) — two new multi-line
+  `EditText` fields (Invidious instances, Shorts search terms), following
+  the existing `etDownloadLocation` commit-on-`onPause()` pattern. The
+  query-pool field additionally calls `ShortsQueryFeeder.applyCustomQueries`
+  immediately on save, so — unlike the Invidious instance change, which
+  only takes effect on the next repository construction — a query-pool
+  edit is live on the very next feed refresh without needing to leave and
+  re-enter the Shorts tab or restart the app.
+
 **Definition of Done:**
-1. Changing the default resolution (Phase 12) actually changes what
-   `ResolutionPickerDialog` (Phase 6) pre-selects.
-2. The Invidious instance list (`InvidiousShortsSource.DEFAULT_INSTANCES`,
-   currently a hardcoded constant — see Phase 2) becomes user-configurable
-   from Settings, with the hardcoded list as the shipped default.
-3. Optional but recommended: expose `ShortsQueryFeeder`'s seed-query pool
-   as editable too, so a user (or a future update) can tune what "trending"
-   means for their feed without a code change.
+1. ✅ Changing the default format actually changes what
+   `ResolutionPickerDialog` does — for an unambiguous match, it skips the
+   picker and downloads directly; otherwise the preferred type sorts
+   first in the shown list.
+2. ✅ Invidious instances are user-configurable from Settings, with
+   `InvidiousShortsSource.DEFAULT_INSTANCES` as the shipped default when
+   the field is left blank.
+3. ✅ (the spec's optional half, implemented rather than skipped) The
+   Shorts seed-query pool is editable from Settings too, applied
+   immediately on save and again at every app start.
+
+**Known limitation:** not built/run against a real Android toolchain in
+this session — same standing caveat as every phase since Phase 4.
 
 ---
 

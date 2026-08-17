@@ -11,6 +11,7 @@ import com.cobalt.android.shorts.source.InnertubeShortsSource
 import com.cobalt.android.shorts.source.InvidiousShortsSource
 import com.cobalt.android.shorts.source.NewPipeShortsSource
 import com.cobalt.android.shorts.source.ShortsSource
+import com.cobalt.android.util.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -54,7 +55,13 @@ class ShortsFeedRepository(
         sources = listOf(
             InnertubeShortsSource(),
             NewPipeShortsSource(),
-            InvidiousShortsSource()
+            // Phase 14: instance pool is user-configurable via
+            // SettingsRepository.invidiousInstances, falling back to
+            // InvidiousShortsSource.DEFAULT_INSTANCES when unset. Read
+            // once here at construction time — see the KDoc on
+            // invidiousInstances for the "takes effect on next
+            // construction, not live-patched" contract.
+            InvidiousShortsSource(instances = SettingsRepository(context).invidiousInstances)
         )
     )
 

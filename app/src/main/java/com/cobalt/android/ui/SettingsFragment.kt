@@ -6,6 +6,8 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import com.cobalt.android.databinding.FragmentSettingsBinding
+import com.cobalt.android.shorts.source.InvidiousShortsSource
+import com.cobalt.android.shorts.source.ShortsQueryFeeder
 import com.cobalt.android.util.SettingsRepository
 import com.cobalt.android.util.SettingsRepository.DownloadFormatPreference
 import com.cobalt.android.util.SettingsRepository.ThemeMode
@@ -40,6 +42,26 @@ class SettingsFragment : Fragment() {
         bindFormatToggle()
         bindDownloadLocation()
         bindThemeToggle()
+        bindInvidiousInstances()
+        bindShortsQueries()
+    }
+
+    /**
+     * Phase 14: blank field = keep the shipped default pool
+     * (`InvidiousShortsSource.DEFAULT_INSTANCES`) — shown as a hint, never
+     * pre-filled, so a user who never touches this field stores nothing
+     * and `SettingsRepository.invidjousInstances`'s getter falls through
+     * to the default on every read.
+     */
+    private fun bindInvidiousInstances() {
+        val stored = settings.invidiousInstances
+        val isCustom = stored != InvidiousShortsSource.DEFAULT_INSTANCES
+        binding.etInvidiousInstances.setText(if (isCustom) stored.joinToString("\n") else "")
+    }
+
+    /** Phase 14 (optional half): blank field = shipped default query pool. */
+    private fun bindShortsQueries() {
+        binding.etShortsQueries.setText(settings.customShortsQueries.joinToString("\n"))
     }
 
     private fun bindFormatToggle() {
@@ -89,15 +111,32 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    // Download location is a plain text field with no natural "commit"
-    // event (unlike the toggle groups); persist on navigating away, same
-    // pattern SettingsSheet uses for etCobaltUrl via onStop().
+    // Download location and the two Phase 14 multi-line fields are all
+    // plain text fields with no natural "commit" event (unlike the toggle
+    // groups); persist on navigating away, same pattern SettingsSheet uses
+    // for etCobaltUrl via onStop().
     override fun onPause() {
         super.onPause()
-        val text = _binding?.etDownloadLocation?.text?.toString() ?: return
-        if (text.trim().isNotBlank()) {
-            settings.downloadLocation = text
+        val binding = _binding ?: return
+
+        val downloadLocationText = binding.etDownloadLocation.text?.toString().orEmpty()
+        if (downloadLocationText.trim().isNotBlank()) {
+            settings.downloadLocation = downloadLocationText
         }
+
+        // Phase 14: unlike downloadLocation, a blank field here is a valid,
+        // meaningful value ("use the shipped default"), not something to
+        // ignore — so this always writes, even when empty.
+        val cleanedInstances = binding.etInvidiousInstances.text?.toString().orEmpty()
+            .split("\n")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        settings.invidiousInstances = cleanedInstances.ifEmpty { InvidiousShortsSource.DEFAULT_INSTANCES }
+
+        val queryLines = binding.etShortsQueries.text?.toString().orEmpty().split("\n")
+        settings.customShortsQueries = queryLines
+        // Take effect on the very next feed refresh, not just next launch.
+        ShortsQueryFeeder.applyCustomQueries(settings.customShortsQueries)
     }
 
     override fun onDestroyView() {

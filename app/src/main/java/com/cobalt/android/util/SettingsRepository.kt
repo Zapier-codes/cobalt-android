@@ -1,6 +1,7 @@
 package com.cobalt.android.util
 
 import android.content.Context
+import com.cobalt.android.shorts.source.InvidiousShortsSource
 
 class SettingsRepository(context: Context) {
     private val prefs = context.getSharedPreferences("cobalt_settings", Context.MODE_PRIVATE)
@@ -78,6 +79,52 @@ class SettingsRepository(context: Context) {
             ThemeMode.valueOf(prefs.getString("theme_mode", ThemeMode.DYNAMIC.name) ?: ThemeMode.DYNAMIC.name)
         }.getOrDefault(ThemeMode.DYNAMIC)
         set(v) { prefs.edit().putString("theme_mode", v.name).apply() }
+
+    /**
+     * Phase 14: Invidious instance pool
+     * ([InvidiousShortsSource.DEFAULT_INSTANCES] is the shipped default,
+     * used whenever this key is unset or ends up empty after cleaning).
+     * Persisted newline-separated so a multi-line EditText in Settings can
+     * round-trip it directly with no extra parsing UI. Read once at
+     * `ShortsFeedRepository`'s `constructor(context)` — same "takes effect
+     * next time the feed/repository is (re)constructed, not live-patched
+     * into an already-running feed" contract [downloadLocation] documents
+     * above for `MediaStoreWriter`.
+     */
+    var invidiousInstances: List<String>
+        get() = prefs.getString("invidious_instances", null)
+            ?.split("\n")
+            ?.map { it.trim().trimEnd('/') }
+            ?.filter { it.isNotBlank() }
+            ?.takeIf { it.isNotEmpty() }
+            ?: InvidiousShortsSource.DEFAULT_INSTANCES
+        set(v) {
+            val cleaned = v.map { it.trim().trimEnd('/') }.filter { it.isNotBlank() }
+            prefs.edit().putString("invidious_instances", cleaned.joinToString("\n")).apply()
+        }
+
+    /**
+     * Phase 14 (the spec's optional-but-recommended half): user-editable
+     * seed-query pool for
+     * [com.cobalt.android.shorts.source.ShortsQueryFeeder]. Empty means
+     * "use the shipped default pool" — same null-coalescing shape as
+     * [invidiousInstances], except the empty-list fallback lives in
+     * `ShortsQueryFeeder.applyCustomQueries` itself rather than here, so
+     * this getter can just return what's stored (possibly empty).
+     * Applied at process start (`CobaltApplication`) and again immediately
+     * on save from Settings, so a change is visible on the very next feed
+     * refresh without requiring an app restart.
+     */
+    var customShortsQueries: List<String>
+        get() = prefs.getString("custom_shorts_queries", null)
+            ?.split("\n")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+        set(v) {
+            val cleaned = v.map { it.trim() }.filter { it.isNotBlank() }
+            prefs.edit().putString("custom_shorts_queries", cleaned.joinToString("\n")).apply()
+        }
 
     companion object {
         const val DEFAULT_DOWNLOAD_LOCATION = "Download/Cobalt"

@@ -145,6 +145,62 @@
 
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
+            <!-- Phase 14: Invidious instance pool. Default (shown as hint,
+                 not pre-filled text) is InvidiousShortsSource.DEFAULT_INSTANCES
+                 — leaving this blank keeps that shipped default. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_invidious_instances"
+                android:textColor="@color/cobalt_text_secondary"
+                android:fontFamily="@font/ibm_plex_mono_regular"
+                android:textSize="11sp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="4dp" />
+
+            <EditText
+                android:id="@+id/etInvidiousInstances"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minLines="2"
+                android:gravity="top"
+                android:inputType="textMultiLine|textUri"
+                android:hint="@string/settings_invidious_instances_hint"
+                android:textColor="@color/cobalt_text_primary"
+                android:textColorHint="@color/cobalt_text_secondary"
+                android:fontFamily="@font/ibm_plex_mono_regular"
+                android:textSize="13sp"
+                android:background="@color/cobalt_surface_elevated"
+                android:padding="10dp" />
+
+            <!-- Phase 14 (optional half of the spec): editable Shorts
+                 search-term pool, feeding ShortsQueryFeeder. Blank keeps
+                 the shipped default pool. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_shorts_queries"
+                android:textColor="@color/cobalt_text_secondary"
+                android:fontFamily="@font/ibm_plex_mono_regular"
+                android:textSize="11sp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="4dp" />
+
+            <EditText
+                android:id="@+id/etShortsQueries"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minLines="2"
+                android:gravity="top"
+                android:inputType="textMultiLine"
+                android:hint="@string/settings_shorts_queries_hint"
+                android:textColor="@color/cobalt_text_primary"
+                android:textColorHint="@color/cobalt_text_secondary"
+                android:fontFamily="@font/ibm_plex_mono_regular"
+                android:textSize="13sp"
+                android:background="@color/cobalt_surface_elevated"
+                android:padding="10dp" />
+
             <View android:layout_width="0dp" android:layout_height="24dp" />
 
         </LinearLayout>

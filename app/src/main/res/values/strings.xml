@@ -46,4 +46,10 @@
     <string name="settings_theme_light">light</string>
     <string name="settings_theme_dark">dark</string>
     <string name="settings_theme_dynamic">dynamic</string>
+
+    <!-- Phase 14 -->
+    <string name="settings_invidious_instances">invidious instances (one per line)</string>
+    <string name="settings_invidious_instances_hint">https://yewtu.be</string>
+    <string name="settings_shorts_queries">shorts search terms (one per line, blank = default)</string>
+    <string name="settings_shorts_queries_hint">gaming clips</string>
 </resources>
