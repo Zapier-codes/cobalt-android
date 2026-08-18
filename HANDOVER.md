@@ -1,4 +1,4 @@
-# Cobalt-Android — Handover (Session 6 → 7)
+# Cobalt-Android — Handover (Session 7 → 8)
 
 **Start by cloning the repo fresh: `git clone https://github.com/Zapier-codes/cobalt-android.git`**
 Do not trust any file content quoted in this document or prior handovers as
@@ -7,6 +7,70 @@ current — clone, then read the real files.
 **This file itself should now be committed at the repo root as
 `HANDOVER.md`.** If you don't find it there, this session's work hasn't
 landed yet.
+
+## Workflow rule (set this session, applies going forward): trust the
+## predecessor's handover, don't re-verify it, don't build locally
+
+Starting this session, per explicit user instruction:
+
+- **Do not attempt a local build** (`./gradlew ...` or otherwise). This
+  environment cannot do a real Android build reliably (see "Session 7"
+  below for why it failed outright this time), and **GitHub Actions CI is
+  the actual build/verification authority for this repo** — that's what
+  `cycle-prompt.txt`'s MAINTAIN MODE (M1: `gh run list`) already checks
+  against, not a local build. Don't try to substitute a local build for it.
+- **Only `git add` + `git commit` your work. Do not `git push`.** The user
+  pushes manually. Leaving commits unpushed is the expected end state of a
+  session, not an interruption — don't try to push "to be helpful" and
+  don't treat an unpushed commit as unfinished work.
+- **Trust the previous session's `HANDOVER.md` at face value for what's
+  done and what's next — don't redo its verification pass.** The
+  predecessor already did the "does the repo actually match what's
+  claimed" check; a fresh session should read the handover, confirm via
+  `git log`/`ARCHITECTURE.md` that nothing unexpected landed since (the
+  "Standing verification habits" section below is still worth the ~30
+  seconds it takes), and then go straight to the next phase — not
+  re-derive the whole state of the project from scratch the way Session 7
+  initially did before this instruction was given.
+
+## What Session 7 did
+
+### Phase 17 — Performance: loading placeholders
+
+One DoD item, done — commit `8b91e3b` (**committed only, not pushed** —
+see workflow rule above; push this before trusting `origin/master` to
+reflect it):
+
+Skeleton/shimmer loading placeholders added to Home, Shorts, and
+Downloads. New `ui/widget/SkeletonPulse.kt` (dependency-free pulse-alpha
+animator — no shimmer library added, none existed before) backs all
+three. Full detail, including *what "loading" means on each of the three
+screens* (this took some digging — only Shorts had an explicit
+`isLoading` flag already; Home's was the link-resolve state, Downloads'
+was the pre-first-Room-emission gap), is in `ARCHITECTURE.md`'s Phase 17
+write-up — read that, not this summary, before touching this area again.
+
+**Known limitations, honestly stated** (also in `ARCHITECTURE.md`):
+- **Not compiled or run** — same standing issue as every phase before it,
+  but this session couldn't even *attempt* a local build (see below) —
+  purely eyeball-reviewed Kotlin/XML.
+- `ShortsViewModel.isLoadingMore` (pagination) still has no loading
+  indicator at all — deliberately left alone, not an oversight; see
+  ARCHITECTURE.md for why.
+- The "shimmer" is a shared pulse-alpha animation, not a translating
+  gradient highlight band.
+
+### Session 7 build attempt — informs the workflow rule above
+
+Before the no-local-build instruction was given, this session tried
+`./gradlew --version` to address HANDOVER's own "build the project" top
+priority from Session 6. It failed outright: no network route to
+`services.gradle.org` to fetch the Gradle distribution, and no Android
+SDK installed in this sandbox either. This isn't a "try harder" situation
+— the environment genuinely cannot do it. That's part of why the user
+redirected to the local-commit-only workflow above: local build attempts
+here were never going to succeed, and GitHub Actions is the real
+verification path anyway.
 
 ## Important: this repo is being worked by two independent actors
 
@@ -18,7 +82,7 @@ Phase 5 itself (see the Session 6 git history for how that was resolved).
 **Always `git fetch` and re-read `ARCHITECTURE.md` immediately before
 starting anything, even mid-session.**
 
-## What Session 6 did, most recent work first
+## What Session 6 did (prior session), most recent work first
 
 ### Phase 16 — Shorts feed polish: offline + engagement
 
@@ -103,47 +167,43 @@ cd cobalt-android
 git fetch origin
 git log --oneline origin/master -12
 ```
-Expect (top of log): "Mark Phase 16 done in ARCHITECTURE.md", the
-fragment/banner commit, the ViewModel commit, the repository/`FeedPage`
-commit, then the PeerTube-source and Phase 15 commits from earlier this
-session, then `5fc8cef` (Phase 14). If Phase 16 isn't at the tip, don't
-assume it landed — and check commit authorship for any unexpected `Hermes
+Per the workflow rule at the top, **Session 7's Phase 17 commit (`8b91e3b`
+locally) was deliberately not pushed** — don't expect to see it on
+`origin/master` until the user has pushed it themselves. If it's missing
+from `origin/master`, that does not mean it didn't land; check the local
+repo's `git log` (unpushed) instead, or ask the user whether they've
+pushed yet. Once pushed, expect (top of log): the Phase 17 commit, then
+`8013fba` (Session 6 handover) and the rest of the Session 6 history
+below it. As always, check commit authorship for any unexpected `Hermes
 Pipeline` commits, which would mean the pipeline moved the repo further
 while this was being built.
 
-## Honest limitations of this session's Phase 16 work
+## Honest limitations of this session's Phase 17 work
 
-- **Not compiled or run.** True of every phase since before Session 5.
-  With Phase 16 landing, that's now 16 phases plus the PeerTube addendum
-  entirely unverified against a real Kotlin/Android compiler — see
-  "Immediate next steps," this is genuinely overdue now, not a standing
-  disclaimer to skim past.
-- The cache-fallback banner is purely informational this phase — no
-  dismiss action, no manual retry button. Reasonable future polish, not
-  required by Phase 16's DoD.
-- `isOffline` reflects the last fetch attempt's outcome, not a continuous
-  connectivity listener — matches the DoD's own framing (what a fetch
-  attempt surfaces), but worth knowing if it comes up as a "why didn't the
-  banner show immediately" question later.
+See `ARCHITECTURE.md`'s Phase 17 write-up for the full list (not
+duplicated here to avoid the two drifting) — headline items are: not
+compiled/run (this session couldn't even attempt a local build, see
+above), `isLoadingMore` pagination has no indicator, and the shimmer is a
+pulse-alpha effect, not a translating gradient.
 
 ## Immediate next steps
 
-1. **`git fetch` and re-read `ARCHITECTURE.md` before anything else** —
-   don't trust this handover's phase count against a pipeline that may
-   have moved since, and don't assume the AI-generation feature request
-   is dead just because it's not in the numbered phases — it may come up
-   again.
-2. **Build the project.** This is now the clear highest-priority action —
-   16 phases plus the PeerTube addendum, zero real-compiler verification.
-   Consider making this the mandatory first step of any session (manual
-   or pipeline) before writing more code on an unknown compile state.
-3. **Continue with Phase 17** (loading placeholders on Home/Shorts/
-   Downloads) once a build is confirmed clean.
+1. **Push commit `8b91e3b`** (or confirm the user already has) before
+   assuming `origin/master` reflects Phase 17 — see workflow rule and
+   "Verify this landed" above.
+2. **Do not attempt a local build.** Not a standing disclaimer to
+   re-litigate each session — this was tried and confirmed impossible in
+   this sandbox (no route to `services.gradle.org`, no Android SDK). Trust
+   GitHub Actions CI instead, the way `cycle-prompt.txt`'s MAINTAIN MODE
+   already does.
+3. **Continue with Phase 18** (player lifecycle discipline — see
+   `ARCHITECTURE.md`'s Phase 18 entry for its two DoD items: ExoPlayer/
+   tap-to-play release discipline, and next-item preloading in Shorts).
 4. **If the AI-generated-content feature comes up again**, see "Also
-   declined this session" above before doing anything — the mitigated
-   version (separate labeled section, fiction-only, no blending) is fine
-   to build; the unlabeled/blended/unattended version is not, regardless
-   of how the request is framed.
+   declined this session" (Session 6, below) before doing anything — the
+   mitigated version (separate labeled section, fiction-only, no
+   blending) is fine to build; the unlabeled/blended/unattended version is
+   not, regardless of how the request is framed.
 5. **Carried over from sessions 1-5, still not done** (status vs. pipeline
    work unverified — check before assuming): `AGENTS.md` truncation
    warning, `.env`'s deprecated `TERMINAL_CWD`, leftover `[debug]` logs in
@@ -152,14 +212,21 @@ while this was being built.
 
 ## Standing verification habits
 
+- **Trust the predecessor's handover — don't redo its verification pass**
+  (see workflow rule at the top). A quick `git fetch` + `git log` check
+  that nothing unexpected landed since is still worth doing; a full
+  from-scratch re-derivation of project state is not, going forward.
 - `git fetch` + `git log --oneline -10` on `origin/master` — check commit
   authorship; an unexpected `Hermes Pipeline` commit means it's running
-  concurrently, not a bug.
+  concurrently, not a bug. Remember Session 7's own commit may be
+  unpushed — see "Verify this landed."
 - Read `ARCHITECTURE.md`'s actual `✅ done` markers, not a prior handover's
   phase count.
 - Take "verify X works" DoD items literally, not as a formality — two
-  separate verification steps this session (Phase 15's query-cursor
+  separate verification steps in Session 6 (Phase 15's query-cursor
   exhaustion, Phase 16's duplicate History writes) surfaced real bugs that
   a superficial "yes it's wired up" check would have missed.
-- Given 16 phases plus the PeerTube addendum with zero real-compiler
-  verification, a confirmed clean build is overdue, not optional.
+- **Do not attempt a local build** — confirmed impossible in this sandbox
+  as of Session 7 (see above). GitHub Actions CI is the real verification
+  path; `cycle-prompt.txt`'s MAINTAIN MODE already checks it via
+  `gh run list`.
