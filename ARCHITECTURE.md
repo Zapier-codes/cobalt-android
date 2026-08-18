@@ -218,6 +218,38 @@ inspecting the actual repo) are the source of truth, not state.json's
 ---
 
 ### Phase 2 — Shorts feed screen ✅ done (Session 5)
+**Addendum (Session 6, outside the numbered phase sequence): added a 4th
+source, `PeerTubeShortsSource`.** Per explicit user request to research and
+add any additional Shorts-style providers with a genuinely free API or
+public instances — same bar the existing three sources already meet, not a
+new/lower one. Findings:
+- **Added**: PeerTube (open-source, federated/ActivityPub video platform).
+  Discovery via `sepiasearch.org`'s federated search API (~800+ public
+  instances, one index, no auth — see the class doc comment); resolution
+  via a direct, unauthenticated `GET {origin-instance}/api/v1/videos/{uuid}`
+  call for a real playable file (progressive MP4 or HLS). Both endpoints
+  verified live this session (see HANDOVER for the exact requests checked).
+- **Considered, not added**: Loops (Pixelfed's open-source/federated TikTok
+  alternative, loops.video). Genuinely fits the same open/free bar as
+  PeerTube in principle, but is still in public beta with no documented
+  public API found this session (unlike PeerTube's long-stable, documented
+  REST API) — worth revisiting once its API surface is more established.
+- **Explicitly declined**: "DramaWave", "ReelShort", "DramaBox", and
+  similar short-drama apps the user asked about by name. These are
+  commercial, paywalled, copyrighted entertainment platforms (coin/ad/VIP
+  gated episodes, produced by real publishers) — not free/open like
+  PeerTube or Invidious. The only "APIs" found for them are unofficial
+  third-party resellers reverse-engineering these apps' private backends
+  and reselling access (e.g. via Telegram bots) — not a legitimate public
+  API by any reading of the user's own stated criterion, and not something
+  this session integrated. If the user wants this revisited, it needs a
+  different, explicit conversation about what's actually being asked for
+  — pulling paywalled commercial content via an unauthorized reseller API
+  is a different kind of request from everything else in this file.
+
+**Original Session 5 write-up follows, still accurate for the first three
+sources:**
+
 **Superseded the old Phase 2 spec below.** The original spec assumed a
 single small mock/kiosk data source. Per explicit user direction this
 session, the real requirement is a feed merged from three independent
@@ -252,6 +284,7 @@ volume driver and the shelf only as a secondary top-up, for the same reason.
   Trending-kiosk top-up
 - `shorts/source/InvidiousShortsSource.kt` — public-instance `/api/v1/search`
   + `/api/v1/popular` top-up, with per-call instance failover
+- `shorts/source/PeerTubeShortsSource.kt` — Session 6 addendum, see above
 - `shorts/source/OkHttpNewPipeDownloader.kt`, `NewPipeInit.kt` — required
   glue so NewPipeExtractor uses the project's existing OkHttp stack instead
   of a second HTTP client
