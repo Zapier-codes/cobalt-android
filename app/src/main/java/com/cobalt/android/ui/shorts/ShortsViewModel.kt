@@ -30,6 +30,16 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
     private val _isLoadingMore = MutableLiveData(false)
     val isLoadingMore: LiveData<Boolean> = _isLoadingMore
 
+    /** Phase 16: true when the most recent `refresh()`/`loadMore()` came
+     * from the Room cache fallback rather than a live merge — see
+     * `ShortsFeedRepository.FeedPage`'s doc comment for exactly what this
+     * does and doesn't mean. Drives a banner in `ShortsFragment`; sticky
+     * across calls (stays true until a subsequent live fetch actually
+     * succeeds) rather than tied to a one-shot connectivity check, so it
+     * reflects what the user is actually looking at right now. */
+    private val _isOffline = MutableLiveData(false)
+    val isOffline: LiveData<Boolean> = _isOffline
+
     init {
         refresh()
     }
@@ -38,8 +48,9 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
-            val fresh = repository.loadFeed()
-            _shorts.value = fresh
+            val page = repository.loadFeed()
+            _shorts.value = page.items
+            _isOffline.value = page.isFromCache
             _isLoading.value = false
         }
     }
@@ -50,7 +61,9 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _isLoadingMore.value = true
             val existingIds = _shorts.value.orEmpty().map { it.videoId }.toHashSet()
-            val more = repository.loadFeed().filter { it.videoId !in existingIds }
+            val page = repository.loadFeed()
+            _isOffline.value = page.isFromCache
+            val more = page.items.filter { it.videoId !in existingIds }
             if (more.isNotEmpty()) {
                 _shorts.value = _shorts.value.orEmpty() + more
             }
@@ -88,6 +101,14 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Phase 10: called from `ShortsFragment.playAt()` when a Short actually
      * starts playing, writing the History row Phase 9's table exists for.
+     *
+     * Phase 16: `playAt()` itself now only calls this when the position
+     * actually changed — verifying this phase's DoD found that `onResume()`
+     * re-invoking `playAt()` for the *same already-playing* item (e.g. the
+     * user backgrounds the app and returns) was writing a fresh duplicate
+     * History row every time, not just on a genuine new watch. See
+     * `ShortsFragment.playAt()`'s doc comment for the fix; this method
+     * itself is unchanged — it always records what it's told to.
      */
     fun recordWatch(item: ShortItem) {
         viewModelScope.launch {
