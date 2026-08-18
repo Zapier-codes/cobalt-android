@@ -17,4 +17,24 @@
         android:layout_gravity="center"
         android:visibility="gone" />
 
+    <!-- Phase 16: cache-fallback indicator — see ShortsFeedRepository.FeedPage
+         and ShortsViewModel.isOffline doc comments for exactly when this
+         shows. Deliberately says "cached" rather than "offline": the same
+         fallback also fires when every source is simultaneously backed off
+         (Phase 15) with network present, and this banner should stay
+         accurate in that case too, not just the network-down case. -->
+    <TextView
+        android:id="@+id/tvOfflineBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@color/cobalt_surface_elevated"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:text="@string/shorts_showing_cached"
+        android:textColor="@color/cobalt_text_primary"
+        android:textSize="13sp"
+        android:gravity="center"
+        android:visibility="gone" />
+
 </FrameLayout>

@@ -66,12 +66,31 @@ class ShortsFragment : Fragment() {
         viewModel.isLoading.observe(viewLifecycleOwner) { loading ->
             binding.progressLoading.visibility = if (loading) View.VISIBLE else View.GONE
         }
+
+        // Phase 16: DoD-1 — a cache-fallback page must not silently look
+        // identical to a live one.
+        viewModel.isOffline.observe(viewLifecycleOwner) { offline ->
+            binding.tvOfflineBanner.visibility = if (offline) View.VISIBLE else View.GONE
+        }
     }
 
     override fun onResume() {
         super.onResume()
         ensurePlayer()
-        if (currentlyBoundPosition != RecyclerView.NO_POSITION) playAt(currentlyBoundPosition)
+        // Phase 16: previously called the full playAt(currentlyBoundPosition)
+        // here, which re-did exo.stop()/clearMediaItems()/setMediaItem()/
+        // prepare() — a needless re-buffer of a video that was simply
+        // paused, not released — and, worse, called viewModel.recordWatch()
+        // again for an item the user didn't newly start watching, writing a
+        // duplicate History row every time the app was backgrounded and
+        // resumed. currentlyBoundPosition is only ever non-NO_POSITION when
+        // `player` already has that item loaded (it's set in playAt() right
+        // after a successful setMediaItem(), and reset to NO_POSITION
+        // exactly when `player` is released in onDestroyView()) — so
+        // resuming is always correct here; a fresh playAt() is unnecessary.
+        if (currentlyBoundPosition != RecyclerView.NO_POSITION) {
+            player?.playWhenReady = true
+        }
     }
 
     override fun onPause() {
@@ -101,6 +120,14 @@ class ShortsFragment : Fragment() {
             return
         }
 
+        // Phase 16: defense-in-depth against the same duplicate-History-
+        // write class of bug the onResume() fix above addresses — if
+        // something ever calls playAt() again for the position that's
+        // already bound (onResume()'s own case is now handled without
+        // reaching here at all, see above), don't re-log a watch for a
+        // video the user didn't newly start.
+        val isNewItem = position != currentlyBoundPosition
+
         exo.stop()
         exo.clearMediaItems()
         holder.binding.playerView.player = exo
@@ -122,7 +149,7 @@ class ShortsFragment : Fragment() {
         exo.prepare()
         exo.playWhenReady = true
         currentlyBoundPosition = position
-        viewModel.recordWatch(item)
+        if (isNewItem) viewModel.recordWatch(item)
     }
 
     private fun shareShort(item: ShortItem) {

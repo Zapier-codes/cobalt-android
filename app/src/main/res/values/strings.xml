@@ -6,6 +6,7 @@
     <string name="nav_settings">Settings</string>
     <string name="download_from_clipboard">download from clipboard?</string>
     <string name="not_a_supported_link">that doesn\'t look like a supported link</string>
+    <string name="shorts_showing_cached">Showing cached Shorts — no live results right now</string>
     <string name="merging_locally">merging locally — may take a moment</string>
     <string name="local_merge_failed">local merge failed</string>
     <string name="not_enough_storage">not enough storage</string>
