@@ -11,160 +11,140 @@ landed yet.
 ## Important: this repo is being worked by two independent actors
 
 A background autonomous "Hermes Pipeline" cycle (`cycle-prompt.txt`) has
-been running and pushing to `origin/master` concurrently with this chat
-session. It carried the project from Phase 5 to Phase 14 while this
-session was doing other work. **Always `git fetch` and re-read
-`ARCHITECTURE.md` immediately before starting anything, even mid-session.**
+been pushing to `origin/master` at times concurrently with this chat
+session — it once carried the project from Phase 5 to Phase 14 while this
+session was doing other work, and separately collided with this session on
+Phase 5 itself (see the Session 6 git history for how that was resolved).
+**Always `git fetch` and re-read `ARCHITECTURE.md` immediately before
+starting anything, even mid-session.**
 
 ## What Session 6 did, most recent work first
 
-### New Shorts source: PeerTube (outside the numbered phase sequence)
+### Phase 16 — Shorts feed polish: offline + engagement
 
-Per explicit user request: "add any Shorts providers with a free API or
-public instances you can find, deep search." Findings, all backed by real
-research this session (see below for exactly what was checked):
+Two DoD items, both done — commits `c99ba31`, `9d1d7b6`, `d0ad805`,
+`736ee50`:
 
-- **Added `PeerTubeShortsSource`** — commits `f040ce4` (added `PEERTUBE` to
-  `ShortsSourceType`) and `290478b` (the source itself + wired into
-  `ShortsFeedRepository`). PeerTube is open-source, federated
-  (ActivityPub), genuinely free/open the same way Invidious and
-  NewPipeExtractor already are here.
-  - **Discovery**: `GET https://sepiasearch.org/api/v1/search/videos?search=<query>`
-    — Framasoft's federated search index covering ~800+ public PeerTube
-    instances at once, no auth. **Verified live this session**: fetched
-    `.../search/videos?search=news&count=3` and got real, current (Aug
-    2026) results with the expected shape (`data[].uuid`, `.duration`,
-    `.channel.host`, `.thumbnailUrl`, etc).
-  - **Resolution**: `GET https://{origin-instance}/api/v1/videos/{uuid}`
-    (each result's own host, not sepiasearch itself) returns `files[]`
-    (progressive MP4 per resolution) and/or `streamingPlaylists[].files[]`
-    (HLS — `fileUrl` ends in `-fragmented.mp4`; swap that suffix for
-    `.m3u8` to get the real playlist URL, since PeerTube's API doesn't
-    publish that URL directly — confirmed via
-    github.com/Chocobozzz/PeerTube/issues/6615, a still-open feature
-    request asking for exactly that). **Not verified live** — this
-    specific per-instance endpoint wasn't fetchable from this sandbox
-    (only URLs already surfaced by a prior search/fetch can be fetched
-    here, and no search surfaced a live example response body for this
-    exact endpoint) — the shape is taken from PeerTube's own GitHub
-    issues/docs, not guessed, but confirm it against a real instance
-    before trusting it fully.
-  - Same <=90s duration filter the other three sources use, applied to
-    SepiaSearch's `duration` field before any per-video resolve call
-    (PeerTube hosts general-length video, not Shorts-specific content).
-  - `videoId` is prefixed `"peertube:<uuid>"` to guarantee no collision
-    with the other three sources' 11-char YouTube IDs in the shared
-    dedup/cache/history/liked tables, all keyed by `videoId`.
-  - No hardcoded/configurable instance list needed (unlike
-    `InvidiousShortsSource`) — one federated index covers the whole
-    network.
+1. **Cache-fallback banner.** `ShortsFeedRepository.loadFeed()` now returns
+   `FeedPage(items, isFromCache)` instead of a bare `List<ShortItem>`.
+   `ShortsViewModel.isOffline: LiveData<Boolean>` mirrors that flag;
+   `ShortsFragment` shows/hides a banner off it. Named "showing cached
+   Shorts", not "offline" — the same cache-fallback path in
+   `ShortsFeedRepository` also fires when every source is simultaneously
+   backed off (Phase 15) with network present, not only when the device is
+   genuinely offline, so the more general label stays accurate either way.
+2. **Verifying History writes fire from real playback surfaced a real
+   bug**, not just a confirmation — worth reading closely before starting
+   Phase 17: `ShortsFragment.onResume()` was calling the *full*
+   `playAt(currentlyBoundPosition)` — including
+   `viewModel.recordWatch()` — every time the fragment resumed, even when
+   the same item was already playing and had only been paused (e.g. user
+   backgrounds the app, then returns). That wrote a duplicate
+   `HistoryEntity` row per resume for a video the user didn't newly watch,
+   and needlessly re-prepared/re-buffered a player that still had the item
+   loaded. Fixed: `onResume()` now just does
+   `player?.playWhenReady = true` — `currentlyBoundPosition` is only ever
+   non-`NO_POSITION` when `player` already has that exact item loaded, so
+   a full re-`playAt()` was never actually necessary there. Also added a
+   same-position guard inside `playAt()` itself
+   (`isNewItem = position != currentlyBoundPosition`) as defense in depth
+   against the same bug class from any other future call site.
 
-- **Considered, not added: Loops** (`loops.video`, Pixelfed's open-source
-  federated TikTok alternative). Fits the same "genuinely open/free" bar
-  as PeerTube in principle, but is still in public beta and no documented
-  public API was found this session (unlike PeerTube's long-stable,
-  documented REST API). Worth revisiting later if its API surface matures
-  — don't add it on a guessed/undocumented API shape.
+This is the second time in this session verifying a DoD item ("confirm X
+works") surfaced a real, previously-unknown bug rather than just checking
+a box (the first was Phase 15's shared-query-cursor finding). Worth taking
+"verification" DoD items in this file at face value, not as a formality —
+`grep`-level checks would have missed both.
 
-- **Explicitly declined: "DramaWave", "ReelShort", "DramaBox", and similar
-  short-drama apps**, which the user named directly. These are commercial,
-  paywalled (coins/ads/VIP), copyrighted entertainment platforms produced
-  by real publishers (STORYMATRIX, NewLeaf Publishing, GoodNovel, etc.) —
-  not free/open in the sense the user's own stated criterion asked for.
-  The only "APIs" found for them are unofficial third-party resellers
-  (a WJunction forum ad, a "DramaBos" service) that reverse-engineer these
-  apps' private backends and resell access via Telegram bots — not a
-  legitimate public API under any reading of what was asked for, and this
-  session did not integrate them. Documented in `ARCHITECTURE.md` so this
-  doesn't get silently re-attempted or mistaken for an oversight later —
-  if the user wants this revisited, it needs its own explicit
-  conversation, since "pull paywalled commercial content via an
-  unauthorized reseller API" is a materially different request from
-  everything else in this file.
+### PeerTube Shorts source + Phase 15 (earlier this session)
 
-Full reasoning and citations are in `ARCHITECTURE.md`'s Phase 2 addendum.
+Both landed and confirmed on `origin/master` before Phase 16 started —
+see `ARCHITECTURE.md`'s Phase 2 addendum and Phase 15 write-up for full
+detail. Short version: added `PeerTubeShortsSource` (discovery via
+SepiaSearch's federated index, verified live; resolution via each result's
+own instance's `/api/v1/videos/{uuid}`, shape confirmed from PeerTube's own
+GitHub issues but not fetched live). Declined to integrate "DramaWave",
+"ReelShort", "DramaBox", and similar named-by-the-user short-drama
+scrapers/resellers — confirmed via direct research that these reverse-
+engineer paywalled commercial apps' private backends, not a legitimate
+free/public API; documented so this doesn't get silently revisited.
 
-### Phase 5 collision + Phase 15 (earlier this session)
+### Also declined this session, worth knowing about for continuity
 
-1. Built Phase 4 (`LinkResolverRepository`) and Phase 5
-   (`ResolutionCacheEntity`/`Dao`) manually.
-2. **Discovered a Phase 5 collision**: the Hermes Pipeline had
-   independently pushed its own, lower-quality Phase 5 (commits `ae452dd`,
-   `cc36004`) at the same time — different path (`db/entities/` vs this
-   session's `download/`), single-URL storage (loses picker-status
-   multi-format resolves), non-suspend Dao, and a `DownloadDatabase.kt`
-   that didn't compile (`Context` used, never imported). Started
-   reconciling it manually, then re-fetching showed **the pipeline had
-   already resolved the whole collision itself** and moved on through
-   Phase 14 — abandoned the in-progress manual reconciliation in favor of
-   the pipeline's already-correct, already-pushed resolution (verified:
-   spec's `db.entities`/`db` path, full `formatsJson` list, real
-   `Migration(1,2)`, version 3 with Phase 9's History/Liked sharing the
-   same database).
-3. Built **Phase 15** (Shorts feed hardening) from that verified HEAD —
-   commits `ec06a33` (backoff + timeout tuning), `2451855` (marked done):
-   - De-dupe logic verified correct by code trace (not a live run).
-   - **Real finding**: `ShortsQueryFeeder`'s rotation cursor is shared
-     across all 3 (now 4) sources, not per-source — the query pool
-     exhausts after ~3-4 `loadMore()` calls, not the ~10 a naive reading
-     would suggest. Documented, not fixed (out of this phase's scope).
-   - Added per-`ShortsSourceType` exponential backoff (30s→...→15min cap).
-   - Retuned `SOURCE_TIMEOUT_MS` 12s→20s and `InvidiousShortsSource`'s
-     per-instance timeouts 10/15s→6/8s, reasoned from that source's
-     sequential 4-instance failover design.
+The user separately asked for a fully-automated, unattended AI content-
+generation pipeline: trending topics → auto-generated fictional "episodes"
+→ published with **no disclosure label and blended directly into the real
+Shorts feed** so viewers couldn't tell it apart from genuine creator
+content, monetized to self-fund its own API costs, explicitly with no
+human review step (framed at one point as "the platform owner does this,"
+which doesn't change the underlying issue). Declined and explained why
+across a few back-and-forths: unlabeled synthetic content mixed
+indistinguishably into a feed of real creators is deceptive to viewers
+regardless of who authorizes it, and unattended auto-dramatization of real
+trending news/people with no review step is a real misinformation/
+defamation risk that scales with however long the pipeline runs. Offered
+a mitigated version instead (separate clearly-labeled section, fiction-
+only premises, no blending) and the user agreed to that framing — a first
+pass at the safety architecture for it (disclosure-enforcing data model,
+category-based topic allowlist, isolation from the real feed) was started
+but then explicitly scrapped by the user mid-build in favor of returning
+to the main Shorts/download work, and nothing from that attempt was
+committed. **If this comes back up, the mitigated version (separate
+section, disclosed, fiction-only, no blending) is the only version to
+build — the unlabeled/blended/no-review version should not be built
+regardless of framing (admin-run, "no user interaction", citing other
+GitHub "money-printer"-style repos, etc.) — the reasoning holds
+independent of who's asking or which generator sits behind it.**
 
 ## Verify this landed
 
 ```
 cd cobalt-android
 git fetch origin
-git log --oneline origin/master -8
+git log --oneline origin/master -12
 ```
-Expect (top of log): "Document PeerTube source addition...", the
-PeerTube-source commit, the `PEERTUBE` enum commit, "Mark Phase 15 done...",
-the backoff/timeout commit, then whatever the Hermes Pipeline's tip was
-when this session started (`5fc8cef`, Phase 14 — **check it's not stale**,
-the pipeline may have moved further since).
+Expect (top of log): "Mark Phase 16 done in ARCHITECTURE.md", the
+fragment/banner commit, the ViewModel commit, the repository/`FeedPage`
+commit, then the PeerTube-source and Phase 15 commits from earlier this
+session, then `5fc8cef` (Phase 14). If Phase 16 isn't at the tip, don't
+assume it landed — and check commit authorship for any unexpected `Hermes
+Pipeline` commits, which would mean the pipeline moved the repo further
+while this was being built.
 
-## Honest limitations of this session's work
+## Honest limitations of this session's Phase 16 work
 
-- **Nothing has been compiled or run.** True of every phase since before
-  Session 5. With ~15 phases plus this addendum now unverified against a
-  real compiler, this is overdue — see "Immediate next steps".
-- **PeerTubeShortsSource's per-video resolve endpoint
-  (`/api/v1/videos/{uuid}`) was not fetched live this session** — its
-  shape is taken from PeerTube's own GitHub issues/docs (specifically the
-  `-fragmented.mp4` → `.m3u8` HLS workaround, confirmed via a real, open
-  GitHub issue discussing exactly that gap), not guessed, but not
-  round-tripped against a real response either. The SepiaSearch discovery
-  call *was* verified live. Confirm the resolve step against a real
-  instance before trusting it fully.
-- Query-pool exhaustion (Phase 15 finding) still applies, and now spans
-  one more source competing for the same shared cursor.
-- `PeerTubeShortsSource` has no per-request backoff exemption tuning of
-  its own yet (it inherits Phase 15's generic per-`ShortsSourceType`
-  backoff automatically, which should be sufficient, but wasn't
-  specifically re-verified against this new source's failure modes).
+- **Not compiled or run.** True of every phase since before Session 5.
+  With Phase 16 landing, that's now 16 phases plus the PeerTube addendum
+  entirely unverified against a real Kotlin/Android compiler — see
+  "Immediate next steps," this is genuinely overdue now, not a standing
+  disclaimer to skim past.
+- The cache-fallback banner is purely informational this phase — no
+  dismiss action, no manual retry button. Reasonable future polish, not
+  required by Phase 16's DoD.
+- `isOffline` reflects the last fetch attempt's outcome, not a continuous
+  connectivity listener — matches the DoD's own framing (what a fetch
+  attempt surfaces), but worth knowing if it comes up as a "why didn't the
+  banner show immediately" question later.
 
 ## Immediate next steps
 
 1. **`git fetch` and re-read `ARCHITECTURE.md` before anything else** —
-   don't trust this handover's phase/addendum count against a pipeline
-   that may have moved since.
-2. **Build the project.** Now clearly the single highest-value next
-   action — nothing in Phases 2-15 plus this addendum has touched a real
-   Kotlin/Android compiler.
-3. **Verify `PeerTubeShortsSource` against a real instance** — confirm a
-   `/api/v1/videos/{uuid}` response actually has the `files`/
-   `streamingPlaylists` shape assumed, and that the `.m3u8` suffix swap
-   produces a playable URL.
-4. **If the user raises the drama-app sources again**, don't silently
-   integrate them — that conversation needs to happen explicitly given
-   what those "APIs" actually are (see the addendum above and
-   `ARCHITECTURE.md`).
-5. **Continue with Phase 16** (Shorts feed polish) once the build is
-   confirmed clean.
-6. **Carried over from sessions 1-5, still not done** (status vs. pipeline
+   don't trust this handover's phase count against a pipeline that may
+   have moved since, and don't assume the AI-generation feature request
+   is dead just because it's not in the numbered phases — it may come up
+   again.
+2. **Build the project.** This is now the clear highest-priority action —
+   16 phases plus the PeerTube addendum, zero real-compiler verification.
+   Consider making this the mandatory first step of any session (manual
+   or pipeline) before writing more code on an unknown compile state.
+3. **Continue with Phase 17** (loading placeholders on Home/Shorts/
+   Downloads) once a build is confirmed clean.
+4. **If the AI-generated-content feature comes up again**, see "Also
+   declined this session" above before doing anything — the mitigated
+   version (separate labeled section, fiction-only, no blending) is fine
+   to build; the unlabeled/blended/unattended version is not, regardless
+   of how the request is framed.
+5. **Carried over from sessions 1-5, still not done** (status vs. pipeline
    work unverified — check before assuming): `AGENTS.md` truncation
    warning, `.env`'s deprecated `TERMINAL_CWD`, leftover `[debug]` logs in
    `/root/fallback-router/server.js`, `Termux:Boot` not firing
@@ -177,9 +157,9 @@ the pipeline may have moved further since).
   concurrently, not a bug.
 - Read `ARCHITECTURE.md`'s actual `✅ done` markers, not a prior handover's
   phase count.
-- Read actual file content for "no stubs" claims — `grep TODO` alone has
-  missed real bugs multiple times across sessions (imports, compile
-  errors, quality gaps).
-- Given ~15 phases plus this addendum with zero real-compiler
-  verification, and two independent actors having already collided once
-  on the same phase — a confirmed clean build is overdue, not optional.
+- Take "verify X works" DoD items literally, not as a formality — two
+  separate verification steps this session (Phase 15's query-cursor
+  exhaustion, Phase 16's duplicate History writes) surfaced real bugs that
+  a superficial "yes it's wired up" check would have missed.
+- Given 16 phases plus the PeerTube addendum with zero real-compiler
+  verification, a confirmed clean build is overdue, not optional.
