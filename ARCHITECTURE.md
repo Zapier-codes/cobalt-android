@@ -935,11 +935,57 @@ not the spec's assumed shape.
 
 ---
 
-### Phase 17 — Performance: loading placeholders
+### Phase 17 — Performance: loading placeholders ✅ done (Session 7)
+**Files:**
+- `ui/widget/SkeletonPulse.kt` (new) — shared, dependency-free pulse-alpha
+  animator (no shimmer library added; none existed in the project before
+  this phase, and the DoD doesn't require a moving-gradient shimmer
+  specifically). Caller-owned lifecycle: `cancel()` the returned
+  `ValueAnimator` when the skeleton is retired, not just hide the view.
+- `res/drawable/bg_skeleton_block.xml` (new) — shared skeleton-block shape,
+  reused across all three screens below.
+- `ui/home/HomeFragment.kt` + `res/layout/fragment_home.xml` —
+  `skeletonResolving` (3 rows) shown/pulsed while `HomeViewModel.isResolving`
+  is true. Home has no other data-load state yet (`feedContainer` is still
+  reserved/empty per Phase 3), so the resolve-in-flight state is what this
+  phase's "while their data loads" means here.
+- `ui/shorts/ShortsFragment.kt` + `res/layout/fragment_shorts.xml` — the
+  previous bare `progressLoading` `ProgressBar` is replaced by
+  `skeletonShorts`, shown/pulsed while `ShortsViewModel.isLoading` (initial
+  feed load) is true.
+- `ui/DownloadQueueSheet.kt` + `res/layout/sheet_download_queue.xml` —
+  `skeletonDownloads` (2 rows), visible by default, retired for good on the
+  first real emission from either `allDownloads` or `activeDownloads`
+  (`hasLoadedOnce`/`markLoadedOnce()`) — Room's query `LiveData` genuinely
+  has no value until its first background-thread emission, so this covers
+  a real gap, not a hypothetical one.
+
 **Definition of Done:**
-1. Skeleton/shimmer loading placeholders are present on Home (Phase 3),
-   Shorts (Phase 2), and Downloads (Phase 7) screens while their respective
-   data loads (per the original scaffold requirement).
+1. ✅ Skeleton/shimmer loading placeholders are present on Home, Shorts,
+   and Downloads while their respective data loads — see Files above for
+   what "loads" means on each of the three screens specifically, since
+   only Shorts had an explicit `isLoading` flag already; Home's and
+   Downloads' loading states had to be identified rather than just wired.
+
+**Known limitations, honestly stated:**
+- **Not compiled or run** — this session could not invoke a real Android
+  build at all (see HANDOVER: the sandbox can't reach
+  `services.gradle.org` for the Gradle distribution and has no Android SDK
+  installed), so this is layout/Kotlin reviewed by eye, not
+  compiler-verified, same as every phase before it. Confirming a clean
+  build is still the top outstanding item.
+- `ShortsViewModel.isLoadingMore` (pagination, as opposed to the initial
+  load `isLoading` covers) has no loading indicator at all, skeleton or
+  otherwise — it had none before this phase either. Left alone
+  deliberately: a full-screen skeleton there would hide already-visible
+  feed items rather than stand in for missing ones, and DoD-1 reads as the
+  screen's own load, not every subsequent page fetch. Worth a small
+  footer-style indicator as future polish, not required here.
+- The pulse is a single shared alpha animation (`ofFloat(1f, 0.35f)`,
+  reverse, infinite) applied to each skeleton container as one unit, not a
+  translating shimmer highlight band. Reads as "skeleton loading" clearly
+  enough for this DoD; a true moving-gradient shimmer (e.g. via a library)
+  would be a reasonable visual upgrade later but is out of scope here.
 
 ---
 

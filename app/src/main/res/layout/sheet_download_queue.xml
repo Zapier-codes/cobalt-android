@@ -46,4 +46,59 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
+    <!-- Phase 17: skeleton placeholder for the brief window before
+         DownloadQueueViewModel's Room-backed LiveData delivers its first
+         emission (Room queries run off the main thread, so there's a real
+         if small gap here, not a hypothetical one). Visible on sheet open;
+         hidden for good once DownloadQueueSheet observes a first value on
+         either allDownloads or activeDownloads — see hasLoadedOnce there. -->
+    <LinearLayout
+        android:id="@+id/skeletonDownloads"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:visibility="visible">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingVertical="8dp">
+
+            <View
+                android:layout_width="220dp"
+                android:layout_height="14dp"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/bg_skeleton_block" />
+
+            <View
+                android:layout_width="120dp"
+                android:layout_height="11dp"
+                android:background="@drawable/bg_skeleton_block" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingVertical="8dp">
+
+            <View
+                android:layout_width="180dp"
+                android:layout_height="14dp"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/bg_skeleton_block" />
+
+            <View
+                android:layout_width="120dp"
+                android:layout_height="11dp"
+                android:background="@drawable/bg_skeleton_block" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
 </LinearLayout>

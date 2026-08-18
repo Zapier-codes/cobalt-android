@@ -1,5 +1,6 @@
 package com.cobalt.android.ui.home
 
+import android.animation.ValueAnimator
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -10,11 +11,17 @@ import androidx.core.widget.addTextChangedListener
 import com.cobalt.android.databinding.FragmentHomeBinding
 import com.cobalt.android.link.LinkResolverRepository
 import com.cobalt.android.ui.downloads.ResolutionPickerDialog
+import com.cobalt.android.ui.widget.SkeletonPulse
 
 class HomeFragment : Fragment() {
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
+
+    // Phase 17: only running while skeletonResolving is visible; cancelled
+    // (not just hidden) the moment resolving ends, per SkeletonPulse's own
+    // lifecycle contract.
+    private var skeletonAnimator: ValueAnimator? = null
 
     // Activity-scoped (not viewModels()) so ResolutionPickerDialog, shown via
     // childFragmentManager, reads the same HomeViewModel instance/resolveResult
@@ -62,6 +69,16 @@ class HomeFragment : Fragment() {
         viewModel.isResolving.observe(viewLifecycleOwner) { resolving ->
             binding.btnSubmit.isEnabled = !resolving
             binding.etLinkInput.isEnabled = !resolving
+
+            // Phase 17: skeleton placeholder for the resolve-in-flight state.
+            binding.skeletonResolving.visibility = if (resolving) View.VISIBLE else View.GONE
+            if (resolving) {
+                skeletonAnimator?.cancel()
+                skeletonAnimator = SkeletonPulse.start(binding.skeletonResolving)
+            } else {
+                skeletonAnimator?.cancel()
+                skeletonAnimator = null
+            }
         }
 
         // Phase 6: show the resolution picker once a link resolves.
@@ -78,6 +95,8 @@ class HomeFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        skeletonAnimator?.cancel()
+        skeletonAnimator = null
         _binding = null
     }
 }

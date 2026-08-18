@@ -10,12 +10,37 @@
         android:layout_height="match_parent"
         android:orientation="vertical" />
 
-    <ProgressBar
-        android:id="@+id/progressLoading"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:visibility="gone" />
+    <!-- Phase 17: skeleton placeholder for the initial feed load
+         (ShortsViewModel.isLoading), replacing the previous bare
+         ProgressBar. Deliberately doesn't cover isLoadingMore
+         (pagination) — that state already has visible feed content
+         behind it, so a full-screen skeleton there would hide real
+         items rather than stand in for missing ones; it also had no UI
+         before this phase and adding one is outside Phase 17's DoD
+         (which is about the screens' own load, not every subsequent
+         page fetch), so it's left as a known gap rather than silently
+         bundled in here. -->
+    <LinearLayout
+        android:id="@+id/skeletonShorts"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="bottom|start"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:visibility="gone">
+
+        <View
+            android:layout_width="220dp"
+            android:layout_height="16dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_skeleton_block" />
+
+        <View
+            android:layout_width="140dp"
+            android:layout_height="14dp"
+            android:background="@drawable/bg_skeleton_block" />
+
+    </LinearLayout>
 
     <!-- Phase 16: cache-fallback indicator — see ShortsFeedRepository.FeedPage
          and ShortsViewModel.isOffline doc comments for exactly when this

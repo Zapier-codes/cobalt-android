@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 17: shared shape for skeleton-loading placeholder blocks/lines
+     across Home, Shorts, and Downloads. Uses the same elevated-surface
+     color already used elsewhere (e.g. sheet backgrounds), pulsed via
+     ui.widget.SkeletonPulse rather than encoded as a shimmer gradient here. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/cobalt_surface_elevated" />
+    <corners android:radius="6dp" />
+</shape>

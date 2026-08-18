@@ -1,5 +1,6 @@
 package com.cobalt.android.ui.shorts
 
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -15,6 +16,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.cobalt.android.databinding.FragmentShortsBinding
 import com.cobalt.android.shorts.model.ShortItem
 import com.cobalt.android.shorts.model.StreamKind
+import com.cobalt.android.ui.widget.SkeletonPulse
 
 class ShortsFragment : Fragment() {
 
@@ -25,6 +27,10 @@ class ShortsFragment : Fragment() {
     private lateinit var adapter: ShortsAdapter
     private var player: ExoPlayer? = null
     private var currentlyBoundPosition = RecyclerView.NO_POSITION
+
+    // Phase 17: see HomeFragment's identically-named field — same
+    // cancel-not-just-hide lifecycle contract from SkeletonPulse.
+    private var skeletonAnimator: ValueAnimator? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -64,7 +70,14 @@ class ShortsFragment : Fragment() {
         }
 
         viewModel.isLoading.observe(viewLifecycleOwner) { loading ->
-            binding.progressLoading.visibility = if (loading) View.VISIBLE else View.GONE
+            binding.skeletonShorts.visibility = if (loading) View.VISIBLE else View.GONE
+            if (loading) {
+                skeletonAnimator?.cancel()
+                skeletonAnimator = SkeletonPulse.start(binding.skeletonShorts)
+            } else {
+                skeletonAnimator?.cancel()
+                skeletonAnimator = null
+            }
         }
 
         // Phase 16: DoD-1 — a cache-fallback page must not silently look
@@ -165,6 +178,8 @@ class ShortsFragment : Fragment() {
         player?.release()
         player = null
         currentlyBoundPosition = RecyclerView.NO_POSITION
+        skeletonAnimator?.cancel()
+        skeletonAnimator = null
         _binding = null
     }
 }
