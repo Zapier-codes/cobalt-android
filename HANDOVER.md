@@ -2,192 +2,184 @@
 
 **Start by cloning the repo fresh: `git clone https://github.com/Zapier-codes/cobalt-android.git`**
 Do not trust any file content quoted in this document or prior handovers as
-current — clone, then read the real files. This document explains what
-changed and why, not what's guaranteed to still be true by the time you
-read it.
+current — clone, then read the real files.
 
 **This file itself should now be committed at the repo root as
 `HANDOVER.md`.** If you don't find it there, this session's work hasn't
-landed yet — stop and flag that before assuming any of it is live.
+landed yet.
 
 ## Important: this repo is being worked by two independent actors
 
-During this session, a **background autonomous "Hermes Pipeline" cycle**
-(commit author `Hermes Pipeline <hermes@localhost>`, driven by
-`cycle-prompt.txt`) was running and pushing to `origin/master`
-**concurrently** with this chat session doing manual work on the same
-repo. This caused a real collision on Phase 5 (see below) and, separately,
-the pipeline autonomously carried the project from Phase 5 all the way
-through **Phase 14** while this session was mid-Phase-5 — several phases
-ahead of what this session was tracking.
+A background autonomous "Hermes Pipeline" cycle (`cycle-prompt.txt`) has
+been running and pushing to `origin/master` concurrently with this chat
+session. It carried the project from Phase 5 to Phase 14 while this
+session was doing other work. **Always `git fetch` and re-read
+`ARCHITECTURE.md` immediately before starting anything, even mid-session.**
 
-**Practical implication for Session 7 (and beyond): always `git fetch` and
-read `ARCHITECTURE.md` fresh from `origin/master` immediately before
-starting any work, even mid-session, not just at session start.** The repo
-can and does move out from under a session that isn't actively watching
-for it. If you're a manual chat session like this one, assume the pipeline
-may be running at the same time and re-check before every phase, not just
-once.
+## What Session 6 did, most recent work first
 
-## What Session 6 actually did, in order
+### New Shorts source: PeerTube (outside the numbered phase sequence)
 
-1. **Phase 4** (real `LinkResolverRepository`) and **Phase 5**
-   (`ResolutionCacheEntity`/`Dao`) — built manually, patches handed to the
-   user to `git am` + push by hand (this repo's human collaborator applies
-   patches from a phone; there is no direct push access from this sandbox).
-2. **Phase 5 collision discovered.** The user's `git am` of this session's
-   Phase 5 patch partially failed: `DownloadDatabase.kt` didn't match the
-   patch's expected base content. Re-cloning `origin/master` fresh showed
-   why — the Hermes Pipeline had independently pushed its *own* Phase 5
-   implementation (commits `ae452dd`, `cc36004`) while this session was
-   still working, at `db/entities/ResolutionCacheEntity.kt` +
-   `db/ResolutionCacheDao.kt` (the spec's originally-named path). Its
-   version was lower quality than this session's: single `resolvedUrl`+
-   `title` fields (loses all but one format for any `picker`-status
-   resolve — doesn't match what `LinkResolverRepository.ResolveResult.
-   Success.formats: List<ResolvedFormat>` actually produces), non-suspend
-   Dao methods, and it left `DownloadDatabase.kt` **not compiling** (added
-   a `Context` usage without importing `android.content.Context`). This
-   session started reconciling it (removing the duplicate, fixing the
-   import) directly against `origin/master`, then was asked to "pull the
-   latest commit and continue from there" — re-fetching at that point
-   showed the **Hermes Pipeline had already resolved the whole collision
-   itself** (see next point) and moved on through Phase 14. This session's
-   in-progress reconciliation was abandoned in favor of the pipeline's
-   already-landed, already-pushed resolution — redoing it would have been
-   redundant and risked a second collision.
-3. **Confirmed the pipeline's Phase 5 resolution is sound.** Read the
-   actual current `DownloadDatabase.kt`/`ResolutionCacheEntity.kt`/
-   `ResolutionCacheDao.kt` on `origin/master`: consolidated at the spec's
-   `db.entities`/`db` path, full `formatsJson` list (not single-URL), real
-   `Migration(1,2)` (not `fallbackToDestructiveMigration`), version bumped
-   to 3 (History/Liked, Phase 9, share this database too — see
-   `DownloadDatabase.kt`'s own doc comment). No leftover duplicate files.
-   `LinkResolverRepository` reads/writes through it with the same
-   5-minute-freshness reasoning this session had already independently
-   arrived at. Did not re-do or second-guess this — it's correct and
-   already live.
-4. **Verified Phases 1-14 are genuinely at HEAD** via `ARCHITECTURE.md`'s
-   own per-phase `✅ done` markers and `git log`, rather than assuming from
-   the phase-count jump alone.
-5. **Built Phase 15** (Shorts feed hardening) manually from that verified
-   HEAD — pushed as commits `ec06a33` (backoff + timeout tuning) and
-   `2451855` (ARCHITECTURE.md marked done):
-   - **DoD-1 (verify pagination de-dupe)**: verified by code trace, not a
-     live run (no network egress to YouTube/Invidious/NewPipe from this
-     sandbox). De-dupe logic itself (`ShortsFeedRepository.dedupeById` +
-     `ShortsViewModel.loadMore()`'s existing-ID filter) is structurally
-     correct at every layer — no bug found there. **Did** find a real,
-     previously-undocumented limitation: `ShortsQueryFeeder`'s rotation
-     cursor is a single `object`-level `AtomicInteger` shared across *all
-     three* sources, not per-source — each `loadFeed()` call advances it
-     by 9 (3 sources × `QUERIES_PER_FETCH=3`), not 3, so the 30-term query
-     pool starts repeating after roughly **3-4 `loadMore()` calls**, not
-     the ~10 a naive per-source reading would suggest. Documented in
-     `ARCHITECTURE.md`'s Phase 15 write-up and flagged as a real UX
-     ceiling for a future phase to address (larger/expandable query pool,
-     or genuine per-query result pagination) — not fixed this phase,
-     which was scoped to pagination *correctness* + backoff, not query
-     diversity depth.
-   - **DoD-2 (backoff)**: added `ShortsFeedRepository.
-     fetchFromSourceWithBackoff` — per-`ShortsSourceType` exponential
-     backoff (30s/60s/120s/... doubling per consecutive timeout-or-
-     exception, capped 15 min, cleared on next real response). An empty
-     non-exceptional result is treated as "reachable, nothing new," not a
-     failure — all three sources' aggressive filtering can legitimately
-     yield zero results for a healthy source.
-   - **DoD-3 (timeout tuning)**: `SOURCE_TIMEOUT_MS` 12s -> 20s;
-     `InvidiousShortsSource`'s per-request `connectTimeout`/`readTimeout`
-     10s/15s -> 6s/8s. Reasoning: that source fails over across up to 4
-     instances *sequentially* per query (up to 3 queries/fetch) — a single
-     slow instance at old timeouts could burn most of the *old* 12s outer
-     budget before failover ever reached a healthy instance. Shorter
-     per-instance timeouts + a larger outer budget together give real
-     failover an actual chance to complete. Reasoned, not measured live.
-6. **Did not touch Phase 16 or beyond** — next open phase per
-   `ARCHITECTURE.md` as of this handover.
+Per explicit user request: "add any Shorts providers with a free API or
+public instances you can find, deep search." Findings, all backed by real
+research this session (see below for exactly what was checked):
+
+- **Added `PeerTubeShortsSource`** — commits `f040ce4` (added `PEERTUBE` to
+  `ShortsSourceType`) and `290478b` (the source itself + wired into
+  `ShortsFeedRepository`). PeerTube is open-source, federated
+  (ActivityPub), genuinely free/open the same way Invidious and
+  NewPipeExtractor already are here.
+  - **Discovery**: `GET https://sepiasearch.org/api/v1/search/videos?search=<query>`
+    — Framasoft's federated search index covering ~800+ public PeerTube
+    instances at once, no auth. **Verified live this session**: fetched
+    `.../search/videos?search=news&count=3` and got real, current (Aug
+    2026) results with the expected shape (`data[].uuid`, `.duration`,
+    `.channel.host`, `.thumbnailUrl`, etc).
+  - **Resolution**: `GET https://{origin-instance}/api/v1/videos/{uuid}`
+    (each result's own host, not sepiasearch itself) returns `files[]`
+    (progressive MP4 per resolution) and/or `streamingPlaylists[].files[]`
+    (HLS — `fileUrl` ends in `-fragmented.mp4`; swap that suffix for
+    `.m3u8` to get the real playlist URL, since PeerTube's API doesn't
+    publish that URL directly — confirmed via
+    github.com/Chocobozzz/PeerTube/issues/6615, a still-open feature
+    request asking for exactly that). **Not verified live** — this
+    specific per-instance endpoint wasn't fetchable from this sandbox
+    (only URLs already surfaced by a prior search/fetch can be fetched
+    here, and no search surfaced a live example response body for this
+    exact endpoint) — the shape is taken from PeerTube's own GitHub
+    issues/docs, not guessed, but confirm it against a real instance
+    before trusting it fully.
+  - Same <=90s duration filter the other three sources use, applied to
+    SepiaSearch's `duration` field before any per-video resolve call
+    (PeerTube hosts general-length video, not Shorts-specific content).
+  - `videoId` is prefixed `"peertube:<uuid>"` to guarantee no collision
+    with the other three sources' 11-char YouTube IDs in the shared
+    dedup/cache/history/liked tables, all keyed by `videoId`.
+  - No hardcoded/configurable instance list needed (unlike
+    `InvidiousShortsSource`) — one federated index covers the whole
+    network.
+
+- **Considered, not added: Loops** (`loops.video`, Pixelfed's open-source
+  federated TikTok alternative). Fits the same "genuinely open/free" bar
+  as PeerTube in principle, but is still in public beta and no documented
+  public API was found this session (unlike PeerTube's long-stable,
+  documented REST API). Worth revisiting later if its API surface matures
+  — don't add it on a guessed/undocumented API shape.
+
+- **Explicitly declined: "DramaWave", "ReelShort", "DramaBox", and similar
+  short-drama apps**, which the user named directly. These are commercial,
+  paywalled (coins/ads/VIP), copyrighted entertainment platforms produced
+  by real publishers (STORYMATRIX, NewLeaf Publishing, GoodNovel, etc.) —
+  not free/open in the sense the user's own stated criterion asked for.
+  The only "APIs" found for them are unofficial third-party resellers
+  (a WJunction forum ad, a "DramaBos" service) that reverse-engineer these
+  apps' private backends and resell access via Telegram bots — not a
+  legitimate public API under any reading of what was asked for, and this
+  session did not integrate them. Documented in `ARCHITECTURE.md` so this
+  doesn't get silently re-attempted or mistaken for an oversight later —
+  if the user wants this revisited, it needs its own explicit
+  conversation, since "pull paywalled commercial content via an
+  unauthorized reseller API" is a materially different request from
+  everything else in this file.
+
+Full reasoning and citations are in `ARCHITECTURE.md`'s Phase 2 addendum.
+
+### Phase 5 collision + Phase 15 (earlier this session)
+
+1. Built Phase 4 (`LinkResolverRepository`) and Phase 5
+   (`ResolutionCacheEntity`/`Dao`) manually.
+2. **Discovered a Phase 5 collision**: the Hermes Pipeline had
+   independently pushed its own, lower-quality Phase 5 (commits `ae452dd`,
+   `cc36004`) at the same time — different path (`db/entities/` vs this
+   session's `download/`), single-URL storage (loses picker-status
+   multi-format resolves), non-suspend Dao, and a `DownloadDatabase.kt`
+   that didn't compile (`Context` used, never imported). Started
+   reconciling it manually, then re-fetching showed **the pipeline had
+   already resolved the whole collision itself** and moved on through
+   Phase 14 — abandoned the in-progress manual reconciliation in favor of
+   the pipeline's already-correct, already-pushed resolution (verified:
+   spec's `db.entities`/`db` path, full `formatsJson` list, real
+   `Migration(1,2)`, version 3 with Phase 9's History/Liked sharing the
+   same database).
+3. Built **Phase 15** (Shorts feed hardening) from that verified HEAD —
+   commits `ec06a33` (backoff + timeout tuning), `2451855` (marked done):
+   - De-dupe logic verified correct by code trace (not a live run).
+   - **Real finding**: `ShortsQueryFeeder`'s rotation cursor is shared
+     across all 3 (now 4) sources, not per-source — the query pool
+     exhausts after ~3-4 `loadMore()` calls, not the ~10 a naive reading
+     would suggest. Documented, not fixed (out of this phase's scope).
+   - Added per-`ShortsSourceType` exponential backoff (30s→...→15min cap).
+   - Retuned `SOURCE_TIMEOUT_MS` 12s→20s and `InvidiousShortsSource`'s
+     per-instance timeouts 10/15s→6/8s, reasoned from that source's
+     sequential 4-instance failover design.
 
 ## Verify this landed
 
 ```
 cd cobalt-android
 git fetch origin
-git log --oneline origin/master -6
+git log --oneline origin/master -8
 ```
-Expect (top of log): "Mark Phase 15 done in ARCHITECTURE.md", the backoff/
-timeout-tuning commit, then whatever the Hermes Pipeline's Phase 14 tip
-was when this session started (`5fc8cef` at the time this session pulled
-— **check it's not stale**, the pipeline may well have moved further by
-the time you read this). If Phase 15 isn't at the tip, don't assume it
-landed.
+Expect (top of log): "Document PeerTube source addition...", the
+PeerTube-source commit, the `PEERTUBE` enum commit, "Mark Phase 15 done...",
+the backoff/timeout commit, then whatever the Hermes Pipeline's tip was
+when this session started (`5fc8cef`, Phase 14 — **check it's not stale**,
+the pipeline may have moved further since).
 
-## Honest limitations of this session's Phase 15 work
+## Honest limitations of this session's work
 
-- **Not compiled or run, and not verified against real Invidious/
-  Innertube/NewPipe traffic.** Same standing sandbox limitation as every
-  phase this session has touched. The backoff schedule and retuned
-  timeouts are reasoned from the existing code's own structure (instance
-  counts, query counts, old timeout values), not measured against live
-  services.
-- The query-pool-exhaustion finding (DoD-1) is documented, not fixed.
-  Flagging again here so it doesn't get lost: `ShortsQueryFeeder`'s shared
-  cursor across all 3 sources means meaningful new-content depth via
-  `loadMore()` is much shallower (~3-4 pages) than the pool size alone
-  would suggest. Worth a dedicated phase if users report the Shorts feed
-  "running dry" quickly.
-- Backoff state is in-memory only, scoped to one `ShortsFeedRepository`
-  instance's lifetime — resets on process death. Considered acceptable,
-  not a gap to close.
+- **Nothing has been compiled or run.** True of every phase since before
+  Session 5. With ~15 phases plus this addendum now unverified against a
+  real compiler, this is overdue — see "Immediate next steps".
+- **PeerTubeShortsSource's per-video resolve endpoint
+  (`/api/v1/videos/{uuid}`) was not fetched live this session** — its
+  shape is taken from PeerTube's own GitHub issues/docs (specifically the
+  `-fragmented.mp4` → `.m3u8` HLS workaround, confirmed via a real, open
+  GitHub issue discussing exactly that gap), not guessed, but not
+  round-tripped against a real response either. The SepiaSearch discovery
+  call *was* verified live. Confirm the resolve step against a real
+  instance before trusting it fully.
+- Query-pool exhaustion (Phase 15 finding) still applies, and now spans
+  one more source competing for the same shared cursor.
+- `PeerTubeShortsSource` has no per-request backoff exemption tuning of
+  its own yet (it inherits Phase 15's generic per-`ShortsSourceType`
+  backoff automatically, which should be sufficient, but wasn't
+  specifically re-verified against this new source's failure modes).
 
 ## Immediate next steps
 
-1. **`git fetch` and re-read `ARCHITECTURE.md` before doing anything else**
-   — per "Important: this repo is being worked by two independent actors"
-   above, don't trust this handover's phase count.
-2. **Build the project.** Still true as of this handover: no clean
-   `./gradlew assembleDebug` has been confirmed since before Session 5.
-   With the codebase now at ~15 phases of unverified-against-a-compiler
-   work, this is increasingly the highest-value single action available —
-   consider making it the *first* thing any session does, manual or
-   pipeline, before adding more code on top of an unknown compile state.
-3. **Test against real services** once compiling: a real cobalt instance
-   (Phase 4/5), and real Innertube/NewPipe/Invidious traffic (Phase 15's
-   backoff/timeout tuning, and the query-exhaustion finding above).
-4. **Consider whether the query-pool-exhaustion finding warrants its own
-   phase** — it's real, documented, and not addressed by Phases 15 or 16
-   as currently scoped.
-5. **Continue with Phase 16** (Shorts feed polish: offline indicator +
-   confirming History writes fire from real playback) once Phase 15 is
-   confirmed landed and, ideally, the project has been compiled at least
-   once.
-6. **Carried over from sessions 1-5, still not done** (unverified whether
-   the pipeline has addressed any of these — check before assuming):
-   - `AGENTS.md` truncation warning (80,689 chars vs 30,720 limit).
-   - Deprecated `.env` setting `TERMINAL_CWD` should move to
-     `config.yaml` under `terminal: cwd:`.
-   - Strip leftover `[debug]` console.log lines from
-     `/root/fallback-router/server.js`.
-   - `Termux:Boot` doesn't fire `BOOT_COMPLETED` on this device; `.bashrc`
-     resume-on-open trigger is the working mitigation.
-   - Provider health: re-check `~/router.log` before assuming anything
-     about which provider is carrying real work.
+1. **`git fetch` and re-read `ARCHITECTURE.md` before anything else** —
+   don't trust this handover's phase/addendum count against a pipeline
+   that may have moved since.
+2. **Build the project.** Now clearly the single highest-value next
+   action — nothing in Phases 2-15 plus this addendum has touched a real
+   Kotlin/Android compiler.
+3. **Verify `PeerTubeShortsSource` against a real instance** — confirm a
+   `/api/v1/videos/{uuid}` response actually has the `files`/
+   `streamingPlaylists` shape assumed, and that the `.m3u8` suffix swap
+   produces a playable URL.
+4. **If the user raises the drama-app sources again**, don't silently
+   integrate them — that conversation needs to happen explicitly given
+   what those "APIs" actually are (see the addendum above and
+   `ARCHITECTURE.md`).
+5. **Continue with Phase 16** (Shorts feed polish) once the build is
+   confirmed clean.
+6. **Carried over from sessions 1-5, still not done** (status vs. pipeline
+   work unverified — check before assuming): `AGENTS.md` truncation
+   warning, `.env`'s deprecated `TERMINAL_CWD`, leftover `[debug]` logs in
+   `/root/fallback-router/server.js`, `Termux:Boot` not firing
+   `BOOT_COMPLETED`, `~/router.log` provider-health re-check.
 
-## Standing verification habits (still true, still not automated)
+## Standing verification habits
 
-- `git fetch` + `git log --oneline -10` on `origin/master` — a real
-  commit, message matches actual diff, **and check the author** — a
-  `Hermes Pipeline` commit you didn't expect is a signal the pipeline is
-  running concurrently, not a bug.
-- Read `ARCHITECTURE.md`'s actual per-phase `✅ done` markers, not a prior
-  handover's phase count, as the source of truth for what's actually
-  complete.
-- Read the actual file content for anything claiming "no stubs" — `grep
-  TODO` alone is not sufficient (Session 4's `ShortsViewModel.kt`,
-  Session 5's missing-imports bug, and this session's own
-  `DownloadDatabase.kt` missing-`Context`-import discovery all would have
-  been missed by a TODO grep).
-- Given this project's history (0/3 clean cycles before session 3's
-  prompt rewrite, mixed since, ~15 phases of code now unverified against
-  a real compiler, and this session's own discovery of two independent
-  actors racing on the same phase) — don't assume unattended reliability.
-  Getting a clean build confirmed is now overdue, not optional polish.
+- `git fetch` + `git log --oneline -10` on `origin/master` — check commit
+  authorship; an unexpected `Hermes Pipeline` commit means it's running
+  concurrently, not a bug.
+- Read `ARCHITECTURE.md`'s actual `✅ done` markers, not a prior handover's
+  phase count.
+- Read actual file content for "no stubs" claims — `grep TODO` alone has
+  missed real bugs multiple times across sessions (imports, compile
+  errors, quality gaps).
+- Given ~15 phases plus this addendum with zero real-compiler
+  verification, and two independent actors having already collided once
+  on the same phase — a confirmed clean build is overdue, not optional.
