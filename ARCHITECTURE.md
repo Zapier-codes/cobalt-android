@@ -782,18 +782,74 @@ this session — same standing caveat as every phase since Phase 4.
 
 ---
 
-### Phase 15 — Shorts feed hardening: pagination, backoff, rate limits
+### Phase 15 — Shorts feed hardening: pagination, backoff, rate limits ✅ done (Session 6)
+**Note on the original DoD wording:** it referred to
+"`ShortsFeedRepository.loadMore()`" — no such method exists.
+Pagination lives in `ShortsViewModel.loadMore()`, which calls
+`ShortsFeedRepository.loadFeed()` again and filters the result against
+already-shown `videoId`s client-side. Verified against the actual code,
+not the spec's assumed shape.
+
 **Definition of Done:**
-1. `ShortsFeedRepository.loadMore()` (Phase 2) is verified under real
-   repeated use — confirm de-dupe holds across many pages, not just the
-   first two.
-2. Each of the three sources gets basic backoff on repeated failures
-   (don't hammer a dead Invidious instance or a 403'ing Innertube key every
-   single refresh) — simple exponential backoff per source is sufficient,
-   this doesn't need to be sophisticated.
-3. Confirm the `SOURCE_TIMEOUT_MS` guard in `ShortsFeedRepository` (Phase 2)
-   is tuned reasonably against real network conditions, not just the
-   12s placeholder value picked without live testing.
+1. ✅ **Verified by code trace, not a live run** (no network egress to
+   YouTube/Invidious/NewPipe from this sandbox — see HANDOVER). Findings:
+   - De-dupe itself is structurally correct at every layer: `loadFeed()`'s
+     own `dedupeById` (`LinkedHashMap.putIfAbsent`) de-dupes *within* one
+     merge, and `ShortsViewModel.loadMore()` separately filters the merged
+     result against `videoId`s already shown *across* calls. A cache-
+     fallback page (when all three sources fail/back off — see DoD-2) that
+     happens to return already-shown items is therefore a correct no-op
+     there, not a duplicate-showing bug.
+   - **Real, documented limitation found**: `ShortsQueryFeeder`'s rotation
+     cursor is a single `object`-level `AtomicInteger` *shared across all
+     three sources*, not one per source. Each `loadFeed()` call has all
+     three sources each pull `QUERIES_PER_FETCH=3` queries from that one
+     shared, monotonically-advancing cursor — so one `loadFeed()` call
+     advances it by 9 (3 sources × 3 queries), not 3. Against the
+     30-term `DEFAULT_SEED_QUERIES` pool, this means the *whole pool*
+     starts repeating after roughly **3–4 `loadMore()` calls**, not the
+     ~10 a naive per-source read of `ShortsQueryFeeder`'s doc comment
+     would suggest. Since search results for a fixed query term are
+     largely stable call-to-call, pages from that point on should be
+     expected to skew toward high duplicate/filtered-out rates — de-dupe
+     will correctly hide the repeats, but the practical effect is
+     `loadMore()` increasingly returning few or zero *new* items well
+     before a user could plausibly scroll through the whole catalog.
+     This is a real UX ceiling, not a bug — flagged for Phase 16 or a new
+     phase to consider (e.g. a larger/expandable query pool, or genuine
+     result-level pagination per query instead of re-running the same
+     search), not fixed in this phase, which was scoped to pagination
+     *correctness* and backoff, not query-diversity depth.
+2. ✅ `ShortsFeedRepository.fetchFromSourceWithBackoff` (new) wraps each
+   source's fetch with exponential backoff — 30s/60s/120s/... doubling per
+   consecutive timeout-or-exception, capped at 15 minutes, reset on the
+   next real response (even an empty one, which is treated as "reachable,
+   nothing new" rather than a failure — see its doc comment for why).
+   Keyed per `ShortsSourceType` so a persistently-down source (dead
+   Invidious instance pool, Innertube key/version drift — see HANDOVER)
+   stops being hit on every `loadMore()` scroll trigger.
+3. ✅ `SOURCE_TIMEOUT_MS` raised 12s -> 20s, and `InvidiousShortsSource`'s
+   per-request `connectTimeout`/`readTimeout` shortened 10s/15s -> 6s/8s —
+   reasoning for both in their respective doc comments (in short: this
+   source fails over across up to 4 instances sequentially per query, up
+   to 3 queries per fetch; the old per-instance timeouts could burn most
+   of the *old* outer budget on a single slow instance before failover
+   ever reached a healthy one — shorter per-instance timeouts plus a
+   larger outer budget together give real failover an actual chance to
+   complete). Still a reasoned judgment call, not a live measurement.
+
+**Known limitations, honestly stated:**
+- Nothing in this phase was run against a real network — same standing
+  limitation as every phase since Session 6 started (no egress to
+  arbitrary hosts from this sandbox). Confirm the retuned timeouts and
+  backoff schedule against real conditions before assuming them correct.
+- The shared-cursor query-exhaustion finding above is documented, not
+  fixed — see DoD-1.
+- Backoff state (`ShortsFeedRepository.backoff`) lives in memory only,
+  scoped to one `ShortsFeedRepository` instance's lifetime (tied to
+  `ShortsViewModel`, which survives configuration changes but not process
+  death). A source that was failing gets a clean slate on process restart
+  — acceptable, not flagged as something to fix.
 
 ---
 
