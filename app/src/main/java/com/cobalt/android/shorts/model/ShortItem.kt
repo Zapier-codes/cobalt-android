@@ -23,4 +23,4 @@ data class ShortItem(
 
 enum class StreamKind { PROGRESSIVE, HLS, DASH }
 
-enum class ShortsSourceType { INNERTUBE, NEWPIPE, INVIDIOUS, CACHE }
+enum class ShortsSourceType { INNERTUBE, NEWPIPE, INVIDIOUS, PEERTUBE, CACHE }
