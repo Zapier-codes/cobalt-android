@@ -55,6 +55,11 @@ import java.util.concurrent.TimeUnit
  * are) for what changed and why. Also see HANDOVER.md for a documented,
  * *not yet fixed* pagination-exhaustion finding from this phase's DoD-1
  * verification pass.
+ *
+ * Phase 16: `loadFeed` now returns [FeedPage] (items + whether they came
+ * from the cache fallback) instead of a bare list, so callers can show a
+ * "showing cached Shorts" indicator instead of a live feed silently
+ * looking identical to a cached one.
  */
 class ShortsFeedRepository(
     private val cacheDao: ShortsCacheDao,
@@ -93,11 +98,23 @@ class ShortsFeedRepository(
     private data class SourceBackoff(val consecutiveFailures: Int, val retryAfterMillis: Long)
 
     /**
+     * Phase 16: pairs a page's items with whether it came from a live
+     * merge or the Room cache fallback. [isFromCache] is what
+     * `ShortsViewModel`/`ShortsFragment` use to show a "showing cached
+     * Shorts" banner instead of a live feed silently looking identical to
+     * one — named for what actually happened (a cache fallback), not
+     * assumed-cause "offline", since the same fallback path also fires
+     * when every source is simultaneously backed off (Phase 15) with
+     * network present, not only on a genuinely offline device.
+     */
+    data class FeedPage(val items: List<ShortItem>, val isFromCache: Boolean)
+
+    /**
      * Fetches a fresh page from all sources, cyclically merges + de-dupes it,
      * persists it to the cache, and returns it. Falls back to cache on total
      * failure. Never throws.
      */
-    suspend fun loadFeed(perSourceCount: Int = PER_SOURCE_PAGE_SIZE): List<ShortItem> =
+    suspend fun loadFeed(perSourceCount: Int = PER_SOURCE_PAGE_SIZE): FeedPage =
         withContext(Dispatchers.IO) {
             val perSourceResults = coroutineScope {
                 sources.map { source ->
@@ -113,7 +130,7 @@ class ShortsFeedRepository(
             if (deduped.isNotEmpty()) {
                 cacheDao.upsertAll(deduped.map { it.toCacheEntity() })
                 cacheDao.evictStale(System.currentTimeMillis() - CACHE_TTL_MS)
-                deduped
+                FeedPage(deduped, isFromCache = false)
             } else {
                 // All three sources failed, backed off, or returned nothing
                 // usable — fall back to whatever's cached rather than an
@@ -121,7 +138,10 @@ class ShortsFeedRepository(
                 // this against IDs already shown, so a cache-fallback that
                 // happens to return items already on screen is a correct
                 // no-op there, not a duplicate-showing bug.
-                cacheDao.getRecent(perSourceCount * sources.size).map { it.toShortItem() }
+                FeedPage(
+                    items = cacheDao.getRecent(perSourceCount * sources.size).map { it.toShortItem() },
+                    isFromCache = true
+                )
             }
         }
 
