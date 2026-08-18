@@ -34,9 +34,24 @@ import java.util.concurrent.TimeUnit
  * instance that silently returns nothing when it's down.
  */
 class InvidiousShortsSource(
+    // Phase 15: shortened from connectTimeout=10s/readTimeout=15s. This
+    // source fails over across up to 4 instances *sequentially* per
+    // query (see `searchOnFirstWorkingInstance`), up to 3 queries per
+    // fetch — at the old timeouts, a single slow-but-not-fast-failing
+    // instance at the front of the list could burn 15s on its own, and
+    // `ShortsFeedRepository.SOURCE_TIMEOUT_MS` (20s as of this same
+    // phase) would cut the whole fetch off before failover ever reached
+    // a healthy instance. Shorter per-instance timeouts trade "give a
+    // genuinely slow-but-alive instance more time" for "let failover
+    // actually reach the next instance while there's still budget left"
+    // — the right tradeoff here, since a dead/unresponsive instance is a
+    // realistic, expected state for public Invidious instances (see the
+    // class doc comment), not a rare edge case worth waiting out.
+    // Still not a substitute for measuring against real instances live
+    // (no network egress to them from this sandbox) — see HANDOVER.
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
         .build(),
     private val instances: List<String> = DEFAULT_INSTANCES
 ) : ShortsSource {
