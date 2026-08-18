@@ -11,6 +11,7 @@ import com.cobalt.android.shorts.model.ShortsSourceType
 import com.cobalt.android.shorts.source.InnertubeShortsSource
 import com.cobalt.android.shorts.source.InvidiousShortsSource
 import com.cobalt.android.shorts.source.NewPipeShortsSource
+import com.cobalt.android.shorts.source.PeerTubeShortsSource
 import com.cobalt.android.shorts.source.ShortsSource
 import com.cobalt.android.util.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -70,7 +71,12 @@ class ShortsFeedRepository(
             // once here at construction time — see the KDoc on
             // invidiousInstances for the "takes effect on next
             // construction, not live-patched" contract.
-            InvidiousShortsSource(instances = SettingsRepository(context).invidiousInstances)
+            InvidiousShortsSource(instances = SettingsRepository(context).invidiousInstances),
+            // New source: PeerTube via SepiaSearch's federated index — see
+            // PeerTubeShortsSource's doc comment. Unlike Invidious, this
+            // doesn't need a hardcoded/configurable instance list: one
+            // federated search index covers ~800+ public instances at once.
+            PeerTubeShortsSource()
         )
     )
 
