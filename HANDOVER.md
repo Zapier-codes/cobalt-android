@@ -20,9 +20,51 @@ Starting this session, per explicit user instruction:
   `cycle-prompt.txt`'s MAINTAIN MODE (M1: `gh run list`) already checks
   against, not a local build. Don't try to substitute a local build for it.
 - **Only `git add` + `git commit` your work. Do not `git push`.** The user
-  pushes manually. Leaving commits unpushed is the expected end state of a
-  session, not an interruption — don't try to push "to be helpful" and
-  don't treat an unpushed commit as unfinished work.
+  pushes manually via `git am` on their own device (see "How to hand off
+  commits" immediately below) — leaving commits unpushed in this sandbox
+  is the expected end state of a session, not an interruption.
+
+### How to hand off commits: output patch files, not just local commits
+
+The user's device is separate from this sandbox and pulls work over via
+`git am`, not `git pull`/`git push` directly — this sandbox's repo isn't
+reachable from their machine. **A session isn't finished until the patch
+files are generated and presented**, not just committed locally — an
+unpushed local commit with no corresponding patch file handed to the user
+is a dead end for them, and made Session 7 have to be asked twice for it.
+Concretely, at the end of a session (or whenever asked to hand off work):
+
+1. Find the base commit — the last one already on `origin/master` before
+   this session's own commits (check `git log origin/master -1` after a
+   `git fetch`, or just the commit hash the session's own first commit
+   was made on top of).
+2. Generate one patch file per commit, continuing the numbering already
+   in use (check `/mnt/user-data/outputs` or ask if unsure what the last
+   number was — Session 7 used `0005`/`0006`, so Session 8's first patch
+   is `0007`):
+   ```
+   git format-patch <base-commit>..HEAD -o /mnt/user-data/outputs --start-number=<N>
+   ```
+3. Present the resulting file(s) via `present_files` so the user can
+   actually download them — do not just report the path in prose.
+4. Give the user this exact push sequence back (adjust the filename(s) to
+   match what was actually generated, in order, and adjust the local path
+   below if the user's own working copy lives somewhere else — this is
+   the path used so far):
+   ```
+   cd /root/projects/vid/cobalt-android
+   git fetch origin
+   git reset --hard origin/master
+   cp /mnt/sdcard/Download/000N-....patch .
+   git am 000N-....patch
+   [repeat the cp/git am pair for each additional patch file, in order]
+   git push
+   ```
+   `git format-patch` + `git am` (not a raw `git diff`) is what's wanted
+   here specifically because it preserves each commit's message and
+   authorship (`Hermes Session N <hermes-sessionN@cobalt-android.local>`)
+   individually, rather than collapsing everything into one uncommitted
+   diff the user would have to commit themselves.
 - **Trust the previous session's `HANDOVER.md` at face value for what's
   done and what's next — don't redo its verification pass.** The
   predecessor already did the "does the repo actually match what's
@@ -188,9 +230,11 @@ pulse-alpha effect, not a translating gradient.
 
 ## Immediate next steps
 
-1. **Push commit `8b91e3b`** (or confirm the user already has) before
-   assuming `origin/master` reflects Phase 17 — see workflow rule and
-   "Verify this landed" above.
+1. **Confirm patch files `0005`–`0007` have actually been applied via
+   `git am` on the user's device** (or ask) before assuming
+   `origin/master` reflects Phase 17 and this handover update — see
+   workflow rule and "Verify this landed" above. Don't try to push
+   directly yourself; this sandbox can't reach the user's device.
 2. **Do not attempt a local build.** Not a standing disclaimer to
    re-litigate each session — this was tried and confirmed impossible in
    this sandbox (no route to `services.gradle.org`, no Android SDK). Trust
