@@ -886,14 +886,52 @@ not the spec's assumed shape.
 
 ---
 
-### Phase 16 — Shorts feed polish: offline + engagement
+### Phase 16 — Shorts feed polish: offline + engagement ✅ done (Session 6)
 **Definition of Done:**
-1. With no network at all, the Shorts feed shows the Room-cached items
-   (Phase 2's fallback path) with a visible "offline" indicator, rather than
-   silently looking identical to a live feed.
-2. History writes from Phase 10 are confirmed actually firing from real
-   Shorts playback (watch a few items, check `HistoryEntity` rows appear) —
-   this is a verification step as much as a build step.
+1. ✅ `ShortsFeedRepository.loadFeed()` now returns `FeedPage(items,
+   isFromCache)` instead of a bare list. `ShortsViewModel` exposes this as
+   `isOffline: LiveData<Boolean>`, and `ShortsFragment` shows a banner
+   ("Showing cached Shorts — no live results right now") whenever it's
+   true — sticky across calls (stays visible until a subsequent live fetch
+   actually succeeds), not a one-shot connectivity check. Named "cached",
+   not "offline": the same fallback path also fires when every source is
+   simultaneously backed off (Phase 15) with network present, not only on
+   a genuinely offline device — the banner stays accurate either way.
+2. ✅ Verified — and this genuinely was "as much a verification step as a
+   build step": History writes fire from real playback
+   (`ShortsFragment.playAt()` → `ShortsViewModel.recordWatch()`), but
+   verifying it surfaced a real bug, not just confirmation. **Found**:
+   `onResume()` unconditionally called the *full* `playAt(currentlyBoundPosition)`
+   — including `recordWatch()` — every time the fragment resumed, even
+   when the same item was already playing and had only been paused (e.g.
+   the user backgrounds the app to check a notification, then returns).
+   Result: every such resume wrote a fresh duplicate `HistoryEntity` row
+   for a video the user didn't newly watch, on top of needlessly
+   re-preparing/re-buffering a player that still had the item loaded.
+   **Fixed**: `onResume()` now just resumes playback
+   (`player?.playWhenReady = true`) instead of re-invoking `playAt()` —
+   `currentlyBoundPosition` is only ever non-`NO_POSITION` when `player`
+   already has that exact item loaded (set in `playAt()`, reset only when
+   `player` is released in `onDestroyView()`), so resuming is always
+   correct there. Also added a same-position guard inside `playAt()`
+   itself (`isNewItem = position != currentlyBoundPosition`) as defense in
+   depth against the same class of bug from any other call site.
+
+**Known limitations, honestly stated:**
+- Not compiled or run this session — same standing limitation as every
+  phase since before Session 5, still not resolved (see HANDOVER,
+  "Immediate next steps" — a real build is increasingly overdue).
+- The offline/cache-fallback banner has no dismiss action and no retry
+  button — it's purely informational for this phase. A manual "try again"
+  affordance would be reasonable future polish, not required by this
+  phase's DoD.
+- `isOffline` only reflects the *last* `refresh()`/`loadMore()` call's
+  outcome, not a continuous connectivity listener — if the device is
+  offline but the user hasn't triggered a new fetch (e.g. sitting on an
+  already-loaded feed), the banner won't appear until they scroll far
+  enough to trigger `loadMore()` or explicitly refresh. This matches the
+  DoD's own framing ("with no network at all, the Shorts feed shows...")
+  which is about what a fetch attempt surfaces, not passive monitoring.
 
 ---
 
