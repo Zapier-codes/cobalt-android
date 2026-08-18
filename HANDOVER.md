@@ -8,173 +8,186 @@ read it.
 
 **This file itself should now be committed at the repo root as
 `HANDOVER.md`.** If you don't find it there, this session's work hasn't
-landed yet — stop and flag that before assuming any of it is live. See
-"Verify this landed" below.
+landed yet — stop and flag that before assuming any of it is live.
 
-## What Session 6 actually did
+## Important: this repo is being worked by two independent actors
 
-This session was scoped to Phase 4 only, per explicit user direction —
-Phase 4's work and this handover/architecture update, nothing further:
+During this session, a **background autonomous "Hermes Pipeline" cycle**
+(commit author `Hermes Pipeline <hermes@localhost>`, driven by
+`cycle-prompt.txt`) was running and pushing to `origin/master`
+**concurrently** with this chat session doing manual work on the same
+repo. This caused a real collision on Phase 5 (see below) and, separately,
+the pipeline autonomously carried the project from Phase 5 all the way
+through **Phase 14** while this session was mid-Phase-5 — several phases
+ahead of what this session was tracking.
 
-1. **Confirmed Session 5's work landed** before starting anything new:
-   cloned fresh, verified commit `3d0891f` (Phase 3: Home screen shell +
-   paste-link UI) was genuinely at HEAD, and read the actual file contents
-   of `HomeFragment.kt`/`HomeViewModel.kt`/`fragment_home.xml` rather than
-   trusting the commit message alone.
-2. **Found that `LinkResolverRepository.kt` already existed** at
-   `link/LinkResolverRepository.kt`, added in commit `957411f` — out of
-   sequence, before Phase 3 landed, and never wired into `HomeViewModel`.
-   It was also low quality: a blocking (non-suspend) `execute()` call using
-   the deprecated `HttpUrl.parse` API, against a
-   `{instance}/api/resolve?url=` GET contract that doesn't match any real
-   cobalt instance's actual API. Rewriting it was treated as in-scope for
-   Phase 4 (same precedent as Session 5 fixing pre-existing bugs it found
-   while touching a file), not a separate unplanned change.
-3. **Rewrote `LinkResolverRepository.kt`** — pushed as commit `0b16dbc` —
-   as a `suspend fun resolve(url): ResolveResult` (sealed
-   `Success(originalUrl, formats)` / `Error(message)`) run on
-   `Dispatchers.IO`, POSTing JSON to `{instance}/` per the real cobalt v7+
-   API contract (`docs/api.md` in imputnet/cobalt on GitHub — verified via
-   web search, not guessed from training data): `status` one of `error`,
-   `rate-limit`, `picker` (multiple formats + optional separate `audio`
-   track), or `redirect`/`tunnel`/`stream`/`local-processing` (single
-   direct-download URL — different instance versions use different status
-   names for the same case, all four handled identically since there's no
-   way to know which generation a given `cobaltInstanceUrl` runs ahead of
-   the call). Full contract assumptions are documented in the file's top
-   doc comment.
-4. **Wired `HomeViewModel`/`HomeFragment` to the real repository** — pushed
-   as commit `9d00b75`. `HomeViewModel` moved from plain `ViewModel` to
-   `AndroidViewModel` (needs `Context` for `SettingsRepository`, same
-   reason `ShortsViewModel` already is one). `onSubmit()` now launches
-   `repository.resolve(url)` in `viewModelScope`, replacing the old fixed
-   "Link resolution isn't implemented yet (Phase 4)." message with a real
-   in-flight "Resolving…" state, then either a real success summary (format
-   count) or a real, distinct error message per failure mode. Added
-   `isResolving`/`resolveResult` `LiveData`. `HomeFragment` now disables
-   the submit button/field while `isResolving` is true (prevents
-   double-submit against a slow/unreachable instance) but does **not**
-   render `resolveResult` yet — that's Phase 6's resolution-picker UI; this
-   phase's job was only to guarantee the data is real and present in the
-   ViewModel, not to display it.
-5. **Marked Phase 4 done in `ARCHITECTURE.md`** — pushed as commit
-   `ff16a08` — with the same per-phase write-up convention as Phases 1-3
-   (files, Definition of Done checked off, honest known limitations). Also
-   documented there: the file lives at `link/LinkResolverRepository.kt`,
-   not `repository/LinkResolverRepository.kt` as the original Phase 4 spec
-   named it — kept the existing path rather than a same-phase move with no
-   functional reason behind it.
-6. **Did not touch Phase 5 or anything beyond Phase 4**, per explicit user
-   scope for this session — `ResolutionCacheEntity`/`ResolutionCacheDao`
-   and the resolution-picker UI are still open, exactly as ARCHITECTURE.md
-   already described before this session started.
+**Practical implication for Session 7 (and beyond): always `git fetch` and
+read `ARCHITECTURE.md` fresh from `origin/master` immediately before
+starting any work, even mid-session, not just at session start.** The repo
+can and does move out from under a session that isn't actively watching
+for it. If you're a manual chat session like this one, assume the pipeline
+may be running at the same time and re-check before every phase, not just
+once.
+
+## What Session 6 actually did, in order
+
+1. **Phase 4** (real `LinkResolverRepository`) and **Phase 5**
+   (`ResolutionCacheEntity`/`Dao`) — built manually, patches handed to the
+   user to `git am` + push by hand (this repo's human collaborator applies
+   patches from a phone; there is no direct push access from this sandbox).
+2. **Phase 5 collision discovered.** The user's `git am` of this session's
+   Phase 5 patch partially failed: `DownloadDatabase.kt` didn't match the
+   patch's expected base content. Re-cloning `origin/master` fresh showed
+   why — the Hermes Pipeline had independently pushed its *own* Phase 5
+   implementation (commits `ae452dd`, `cc36004`) while this session was
+   still working, at `db/entities/ResolutionCacheEntity.kt` +
+   `db/ResolutionCacheDao.kt` (the spec's originally-named path). Its
+   version was lower quality than this session's: single `resolvedUrl`+
+   `title` fields (loses all but one format for any `picker`-status
+   resolve — doesn't match what `LinkResolverRepository.ResolveResult.
+   Success.formats: List<ResolvedFormat>` actually produces), non-suspend
+   Dao methods, and it left `DownloadDatabase.kt` **not compiling** (added
+   a `Context` usage without importing `android.content.Context`). This
+   session started reconciling it (removing the duplicate, fixing the
+   import) directly against `origin/master`, then was asked to "pull the
+   latest commit and continue from there" — re-fetching at that point
+   showed the **Hermes Pipeline had already resolved the whole collision
+   itself** (see next point) and moved on through Phase 14. This session's
+   in-progress reconciliation was abandoned in favor of the pipeline's
+   already-landed, already-pushed resolution — redoing it would have been
+   redundant and risked a second collision.
+3. **Confirmed the pipeline's Phase 5 resolution is sound.** Read the
+   actual current `DownloadDatabase.kt`/`ResolutionCacheEntity.kt`/
+   `ResolutionCacheDao.kt` on `origin/master`: consolidated at the spec's
+   `db.entities`/`db` path, full `formatsJson` list (not single-URL), real
+   `Migration(1,2)` (not `fallbackToDestructiveMigration`), version bumped
+   to 3 (History/Liked, Phase 9, share this database too — see
+   `DownloadDatabase.kt`'s own doc comment). No leftover duplicate files.
+   `LinkResolverRepository` reads/writes through it with the same
+   5-minute-freshness reasoning this session had already independently
+   arrived at. Did not re-do or second-guess this — it's correct and
+   already live.
+4. **Verified Phases 1-14 are genuinely at HEAD** via `ARCHITECTURE.md`'s
+   own per-phase `✅ done` markers and `git log`, rather than assuming from
+   the phase-count jump alone.
+5. **Built Phase 15** (Shorts feed hardening) manually from that verified
+   HEAD — pushed as commits `ec06a33` (backoff + timeout tuning) and
+   `2451855` (ARCHITECTURE.md marked done):
+   - **DoD-1 (verify pagination de-dupe)**: verified by code trace, not a
+     live run (no network egress to YouTube/Invidious/NewPipe from this
+     sandbox). De-dupe logic itself (`ShortsFeedRepository.dedupeById` +
+     `ShortsViewModel.loadMore()`'s existing-ID filter) is structurally
+     correct at every layer — no bug found there. **Did** find a real,
+     previously-undocumented limitation: `ShortsQueryFeeder`'s rotation
+     cursor is a single `object`-level `AtomicInteger` shared across *all
+     three* sources, not per-source — each `loadFeed()` call advances it
+     by 9 (3 sources × `QUERIES_PER_FETCH=3`), not 3, so the 30-term query
+     pool starts repeating after roughly **3-4 `loadMore()` calls**, not
+     the ~10 a naive per-source reading would suggest. Documented in
+     `ARCHITECTURE.md`'s Phase 15 write-up and flagged as a real UX
+     ceiling for a future phase to address (larger/expandable query pool,
+     or genuine per-query result pagination) — not fixed this phase,
+     which was scoped to pagination *correctness* + backoff, not query
+     diversity depth.
+   - **DoD-2 (backoff)**: added `ShortsFeedRepository.
+     fetchFromSourceWithBackoff` — per-`ShortsSourceType` exponential
+     backoff (30s/60s/120s/... doubling per consecutive timeout-or-
+     exception, capped 15 min, cleared on next real response). An empty
+     non-exceptional result is treated as "reachable, nothing new," not a
+     failure — all three sources' aggressive filtering can legitimately
+     yield zero results for a healthy source.
+   - **DoD-3 (timeout tuning)**: `SOURCE_TIMEOUT_MS` 12s -> 20s;
+     `InvidiousShortsSource`'s per-request `connectTimeout`/`readTimeout`
+     10s/15s -> 6s/8s. Reasoning: that source fails over across up to 4
+     instances *sequentially* per query (up to 3 queries/fetch) — a single
+     slow instance at old timeouts could burn most of the *old* 12s outer
+     budget before failover ever reached a healthy instance. Shorter
+     per-instance timeouts + a larger outer budget together give real
+     failover an actual chance to complete. Reasoned, not measured live.
+6. **Did not touch Phase 16 or beyond** — next open phase per
+   `ARCHITECTURE.md` as of this handover.
 
 ## Verify this landed
 
 ```
-cd cobalt-android   # wherever your clone/device path is
+cd cobalt-android
 git fetch origin
 git log --oneline origin/master -6
 ```
-Expect to see (top of log, most recent first): the "Mark Phase 4 done in
-ARCHITECTURE.md" commit, then the `HomeViewModel`/`HomeFragment` wiring
-commit, then the `LinkResolverRepository` rewrite commit, then `3d0891f`
-(Phase 3), then `778b098` (Phase 2 + 20-phase restructure), then `743ba46`
-(Phase 1). If any of these are missing from `origin/master`, stop and don't
-assume that phase's work is live in whatever environment you're auditing
-from.
+Expect (top of log): "Mark Phase 15 done in ARCHITECTURE.md", the backoff/
+timeout-tuning commit, then whatever the Hermes Pipeline's Phase 14 tip
+was when this session started (`5fc8cef` at the time this session pulled
+— **check it's not stale**, the pipeline may well have moved further by
+the time you read this). If Phase 15 isn't at the tip, don't assume it
+landed.
 
-## Honest limitations of this session's work
+## Honest limitations of this session's Phase 15 work
 
-- **Not compiled or run, and not verified against a live cobalt instance.**
-  No Android SDK was available in this sandbox, and network egress here is
-  restricted to a fixed domain allowlist (github.com, pypi.org, npmjs.com,
-  etc.) with no route to `cobalt.tools` or any other self-hosted instance —
-  so `LinkResolverRepository`'s request/response handling is structurally
-  correct against the *documented* API contract (verified via web search
-  against imputnet/cobalt's docs, not guessed) but has not actually round-
-  tripped against a real server. **Build this and test it against a real
-  cobalt instance before trusting it further** — this is the single most
-  important thing to do first in Session 7, same standing caution as every
-  prior handover about unverified-against-a-real-toolchain code.
-- The API contract assumed is cobalt v7+-style (JSON POST, `status` field).
-  Older instances predating that API rewrite use a different response
-  shape entirely and are not supported — if a user-configured instance
-  returns something this repository can't parse, they'll see "The cobalt
-  instance returned an unreadable response." rather than a specific
-  diagnosis of *why*.
-- `filenameFromUrl()`'s extension/MIME-type guessing (used when a
-  response omits `filename`) is best-effort from the URL path only — it
-  doesn't read `Content-Type`/`Content-Disposition` response headers.
-  Revisit if Phase 6 testing shows wrong filenames/MIME types often enough
-  to matter.
-- `resolveResult` is held in `HomeViewModel` but nothing renders it yet —
-  by design, per Phase 4's scope — so end-to-end there is currently no
-  visible difference to a user beyond the status message text changing
-  from a fixed placeholder to a real (still text-only) outcome. Don't
-  mistake the lack of a picker UI for a bug when starting Phase 6.
-- Session was intentionally scoped to Phase 4 only; Phase 5
-  (`ResolutionCacheEntity`) and Phase 6 (picker UI) are both still fully
-  open, exactly as ARCHITECTURE.md describes.
+- **Not compiled or run, and not verified against real Invidious/
+  Innertube/NewPipe traffic.** Same standing sandbox limitation as every
+  phase this session has touched. The backoff schedule and retuned
+  timeouts are reasoned from the existing code's own structure (instance
+  counts, query counts, old timeout values), not measured against live
+  services.
+- The query-pool-exhaustion finding (DoD-1) is documented, not fixed.
+  Flagging again here so it doesn't get lost: `ShortsQueryFeeder`'s shared
+  cursor across all 3 sources means meaningful new-content depth via
+  `loadMore()` is much shallower (~3-4 pages) than the pool size alone
+  would suggest. Worth a dedicated phase if users report the Shorts feed
+  "running dry" quickly.
+- Backoff state is in-memory only, scoped to one `ShortsFeedRepository`
+  instance's lifetime — resets on process death. Considered acceptable,
+  not a gap to close.
 
 ## Immediate next steps
 
-1. **Verify this session's commits landed** (see "Verify this landed"
-   above). If `ARCHITECTURE.md` doesn't show Phase 4 marked done, stop and
-   flag this — don't proceed as if the repo is further along than it
-   actually is.
-2. **Build the project.** Phases 2-4's code has not been run through a
-   real Kotlin/Android toolchain since Session 5 first flagged this same
-   gap — a clean `./gradlew assembleDebug` (or equivalent) still has not
-   happened. Expect to find and fix compile errors, especially anything
-   touching `HomeViewModel`'s constructor change (plain `ViewModel` →
-   `AndroidViewModel`) if any other code references it directly instead of
-   through `by viewModels()` (grepped for this at the end of Session 6 and
-   found none, but re-check after any further edits).
-3. **Test Phase 4 against a real cobalt instance** — paste a real link on
-   the Home tab, confirm you see "Resolving…" then either a real format-
-   count success message or a real, specific error. If the response shape
-   doesn't match what `LinkResolverRepository` expects, that's the first
-   thing to fix in Session 7, before Phase 5.
-4. **Re-read `ARCHITECTURE.md` in full**, especially Phase 4's write-up and
-   its "Known limitations" — treat it, not any prior session's summary
-   (including this one), as the source of truth for what exists vs. what's
-   genuinely new.
-5. **Re-read `state.json` fresh** — same standing caution as every prior
-   handover: don't trust any snapshot quoted in a document, including this
-   one.
-6. **Start Phase 5** (`ResolutionCacheEntity`/`ResolutionCacheDao`, added to
-   the *existing* `DownloadDatabase.kt` — not a new database) once Phase
-   4 is confirmed working against a real instance.
-7. **Carried over from sessions 1-5, still not done:**
-   - `AGENTS.md` truncation warning (80,689 chars vs 30,720 limit) — check
-     if it's losing important instructions.
-   - Deprecated `.env` setting `TERMINAL_CWD` should move to `config.yaml`
-     under `terminal: cwd:`.
+1. **`git fetch` and re-read `ARCHITECTURE.md` before doing anything else**
+   — per "Important: this repo is being worked by two independent actors"
+   above, don't trust this handover's phase count.
+2. **Build the project.** Still true as of this handover: no clean
+   `./gradlew assembleDebug` has been confirmed since before Session 5.
+   With the codebase now at ~15 phases of unverified-against-a-compiler
+   work, this is increasingly the highest-value single action available —
+   consider making it the *first* thing any session does, manual or
+   pipeline, before adding more code on top of an unknown compile state.
+3. **Test against real services** once compiling: a real cobalt instance
+   (Phase 4/5), and real Innertube/NewPipe/Invidious traffic (Phase 15's
+   backoff/timeout tuning, and the query-exhaustion finding above).
+4. **Consider whether the query-pool-exhaustion finding warrants its own
+   phase** — it's real, documented, and not addressed by Phases 15 or 16
+   as currently scoped.
+5. **Continue with Phase 16** (Shorts feed polish: offline indicator +
+   confirming History writes fire from real playback) once Phase 15 is
+   confirmed landed and, ideally, the project has been compiled at least
+   once.
+6. **Carried over from sessions 1-5, still not done** (unverified whether
+   the pipeline has addressed any of these — check before assuming):
+   - `AGENTS.md` truncation warning (80,689 chars vs 30,720 limit).
+   - Deprecated `.env` setting `TERMINAL_CWD` should move to
+     `config.yaml` under `terminal: cwd:`.
    - Strip leftover `[debug]` console.log lines from
      `/root/fallback-router/server.js`.
-   - `Termux:Boot` still doesn't fire `BOOT_COMPLETED` on this device
-     (known OEM/MIUI restriction); `.bashrc` resume-on-open trigger remains
-     the working mitigation.
+   - `Termux:Boot` doesn't fire `BOOT_COMPLETED` on this device; `.bashrc`
+     resume-on-open trigger is the working mitigation.
    - Provider health: re-check `~/router.log` before assuming anything
-     about which provider is carrying real work — this hasn't been
-     re-verified since session 3.
+     about which provider is carrying real work.
 
 ## Standing verification habits (still true, still not automated)
 
-After any cycle or manual session:
-- `cat ~/.hermes-pipeline/state.json` — did it advance correctly, is
-  `last_updated` a real timestamp, does `current_phase` actually match
-  what `ARCHITECTURE.md`'s Definition of Done says for the current repo
-  state (not just what the model claimed)?
-- `git log --oneline -5` — real commit, message matches actual diff.
-- `git diff` on anything unstaged — no surprise edits.
-- Read the actual file content for anything claiming "no stubs" —
-  `grep TODO` alone is not sufficient, as Session 4 found with
-  `ShortsViewModel.kt`, and as Session 5 found with the missing-imports bug
-  that `grep TODO` also wouldn't have caught.
-- Given this project's history (0/3 clean cycles before session 3's prompt
-  rewrite, mixed since, and Phases 2-4's code all unverified against a real
-  compiler as of this handover), don't assume unattended reliability from
-  any single clean run — keep watching a few more before trusting it
-  unsupervised.
+- `git fetch` + `git log --oneline -10` on `origin/master` — a real
+  commit, message matches actual diff, **and check the author** — a
+  `Hermes Pipeline` commit you didn't expect is a signal the pipeline is
+  running concurrently, not a bug.
+- Read `ARCHITECTURE.md`'s actual per-phase `✅ done` markers, not a prior
+  handover's phase count, as the source of truth for what's actually
+  complete.
+- Read the actual file content for anything claiming "no stubs" — `grep
+  TODO` alone is not sufficient (Session 4's `ShortsViewModel.kt`,
+  Session 5's missing-imports bug, and this session's own
+  `DownloadDatabase.kt` missing-`Context`-import discovery all would have
+  been missed by a TODO grep).
+- Given this project's history (0/3 clean cycles before session 3's
+  prompt rewrite, mixed since, ~15 phases of code now unverified against
+  a real compiler, and this session's own discovery of two independent
+  actors racing on the same phase) — don't assume unattended reliability.
+  Getting a clean build confirmed is now overdue, not optional polish.
