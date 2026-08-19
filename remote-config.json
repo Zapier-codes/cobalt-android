@@ -1,0 +1,4 @@
+{
+  "_comment": "Fetched at runtime by RemoteConfigRepository (app/src/main/java/com/cobalt/android/remoteconfig/RemoteConfigRepository.kt) via raw.githubusercontent.com. Editing cobaltInstanceUrl here changes the instance every installed client resolves against, on their next resolve, with no app update needed. Do NOT add an API key or any other secret to this file — it is served from a public repo with no auth. See .github/workflows/update-remote-config.yml for the automated-update path, or edit cobaltInstanceUrl below directly.",
+  "cobaltInstanceUrl": "https://cobalt-api-yuol.onrender.com"
+}
