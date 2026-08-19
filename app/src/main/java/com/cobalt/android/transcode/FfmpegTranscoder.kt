@@ -251,19 +251,40 @@ class FfmpegTranscoder(private val context: Context) {
          *      (API 16+ vs Main's API 24+) — matches this project's own
          *      `minSdk`; revisit if that ever changes.
          *
-         * VERSION NOTE, stated honestly: `6.1.7` is this session's best
-         * match against this group's other sibling artifacts
-         * (`ffmpeg-kit-lts-16kb` and `ffmpeg-kit-main-16kb` were both
-         * confirmed at `6.1.7`/`6.1.4` respectively at research time), not
-         * a version number read directly off `ffmpeg-kit-lts-full-gpl-16kb`'s
-         * own Maven Central page (that page's version table didn't render
-         * in this sandbox's fetch tooling). If CI fails on this line with
-         * `Could not find io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7`
-         * specifically (not an `Unresolved reference` compile error), that
-         * is this version guess being wrong, not the whole approach —
-         * check https://central.sonatype.com/artifact/io.github.jamaismagic.ffmpeg/ffmpeg-kit-lts-full-gpl-16kb
-         * for the real current version and bump it, same fix pattern as
-         * this file's history already shows twice above.
+         * VERSION NOTE — CORRECTED (was a guess, now confirmed): the
+         * artifact/name choice above (`ffmpeg-kit-lts-full-gpl-16kb`) was
+         * always right — CI's `Could not find
+         * io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7`
+         * error was about the *version* pinned, not the artifact name. The
+         * prior version, `6.1.7`, was inferred from a sibling artifact in
+         * this group (`ffmpeg-kit-lts-16kb`, which genuinely is at 6.1.7)
+         * rather than read off this specific artifact's own page — stated
+         * honestly in that note at the time, and it turned out to matter:
+         * different artifacts in the same Maven group are not guaranteed to
+         * share a version number, and here they don't.
+         *
+         * Fetched `ffmpeg-kit-lts-full-gpl-16kb`'s own mvnrepository.com
+         * page directly (not a search snippet, not a sibling artifact's
+         * page) and confirmed it has exactly **one** published version:
+         * **6.1.4** (Feb 27, 2026) — now what's pinned above. Also
+         * independently re-confirmed the license/codec content this
+         * artifact needs to provide: `FfmpegTranscoder.buildArgs()` above
+         * genuinely emits `-c:v libx264` for `TranscodeProfile.Video`
+         * entries with `videoCodec == "libx264"`, so an LGPL-only sibling
+         * (`ffmpeg-kit-lts-16kb`, or the entirely different
+         * `com.moizhassan.ffmpeg:ffmpeg-kit-16kb` package that turned up
+         * during this same research pass) would silently fail every MP4
+         * tier in `TranscodeProfile.ALL_VIDEO` at runtime with "Unknown
+         * encoder 'libx264'" — a `-gpl` package genuinely is required here,
+         * not just a naming preference.
+         *
+         * If a future version bump is needed, fetch
+         * https://mvnrepository.com/artifact/io.github.jamaismagic.ffmpeg/ffmpeg-kit-lts-full-gpl-16kb
+         * directly and read the version table on *that* page — do not infer
+         * a version from `ffmpeg-kit-lts-16kb`, `ffmpeg-kit-main-full-gpl-16kb`,
+         * or any other sibling artifact's page, even though they're in the
+         * same Maven group. That cross-artifact assumption is exactly what
+         * produced this bug.
          *
          * NAMING NOTE (kept from the previous fix attempt as a general
          * caution, even though it no longer applies to the coordinate

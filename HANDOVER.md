@@ -6,6 +6,72 @@ clone, then read the real files. `git fetch` + `git log --oneline -10`
 before starting anything, even mid-session — parallel manual sessions
 happen often on this repo (see Actors section).
 
+## Continuation (part 3, same session): the real ffmpeg-kit fix + a CI
+## workflow bug that was making runs look inconsistent
+
+The user pasted a live CI failure log (run "Update handover with the real
+ffmpeg-kit fix and Session 13's full history" — ironic, since that commit's
+own claimed fix hadn't actually been verified against a real build yet):
+`Could not find io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7`.
+
+**Root cause, confirmed not guessed:** the artifact/name pinned in
+`app/build.gradle.kts` was always correct — `ffmpeg-kit-lts-full-gpl-16kb`
+genuinely exists as a published Maven Central artifact (fetched the real
+mvnrepository.com page directly, not a search snippet, and confirmed it in
+a full 10-artifact group listing). The version was wrong: `6.1.7` had been
+inferred from a *sibling* artifact in the same group
+(`ffmpeg-kit-lts-16kb`, which genuinely is at `6.1.7`) rather than read off
+`ffmpeg-kit-lts-full-gpl-16kb`'s own page — different artifacts in the same
+Maven group are not guaranteed to share a version, and here they didn't.
+Fetched that artifact's own page directly: it has exactly **one** published
+version, **`6.1.4`** (Feb 27, 2026) — now pinned.
+
+**Before committing to this fix, seriously considered swapping to a
+different package entirely** (`com.moizhassan.ffmpeg:ffmpeg-kit-16kb`,
+confirmed live on Maven Central, found during the same research pass) but
+ruled it out for a real, checked reason, not a hunch: its license metadata
+is LGPL-only, meaning no GPL codecs (x264/x265/etc). Read
+`FfmpegTranscoder.buildArgs()` directly and confirmed it genuinely emits
+`-c:v libx264` for `TranscodeProfile.Video` entries with
+`videoCodec == "libx264"` — an LGPL-only package would silently fail every
+MP4 tier in `TranscodeProfile.ALL_VIDEO` at runtime ("Unknown encoder
+'libx264'"), not at compile time, so this would NOT have shown up as a CI
+failure — it would have shipped broken and only surfaced when a real user
+tried an MP4 download. Checked `minSdk` (26) too, confirming `main` vs
+`lts` doesn't matter for this project (both exceed 26) in case a future
+session considers that swap for other reasons.
+
+**Second, separate fix this same pass**: the user asked why CI seemed to
+"succeed right after failing, almost as if something else is building a
+stale or separate version." Read `.github/workflows/build.yml` directly —
+found `on: push` AND `on: pull_request` both configured for
+`branches: ["**"]`. This project's real workflow is direct commits (patch
++ `git am` + push from a device), not PR-gated merges, so a commit that's
+also part of an open PR (the log the user pasted referenced "PR #44")
+triggers **two separate builds**: one for the exact pushed commit, one for
+a GitHub-synthesized PR merge commit. These are genuinely different trees
+and can diverge in Gradle cache warm-state, producing different pass/fail
+results for what looks like "the same" commit. **Removed the
+`pull_request` trigger** — one trigger, one build, one unambiguous result
+per commit. (The `actions/cache` `restore-keys` fallback in this same file
+was also considered as a contributor — a primary-key cache miss falls back
+to the most recent same-OS cache regardless of which Gradle files produced
+it — but this doesn't fully explain a *nonexistent* artifact resolving,
+since Gradle always re-checks declared repositories for anything not
+already present at the exact requested coordinate+version; flagged as a
+secondary, unconfirmed possibility, not fixed, since removing the
+dual-trigger bug alone should already resolve the confusing behavior
+described.)
+
+**Not yet done:** an actual green Actions run confirming this — same
+standing limitation as always, this sandbox can't watch or trigger CI.
+This is genuinely the fourth ffmpeg-kit dependency attempt; if a
+`Could not find` error appears again on this exact line, do not guess a
+fifth fork — fetch `ffmpeg-kit-lts-full-gpl-16kb`'s own mvnrepository.com
+or central.sonatype.com page directly first, the same way this fix did.
+
+---
+
 ## Workflow (unchanged since Session 9)
 
 - **No local build possible in any sandbox** — no route to

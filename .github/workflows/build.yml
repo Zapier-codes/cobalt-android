@@ -1,9 +1,17 @@
 name: Build
 
+# Only `push` — `pull_request` was removed (see ARCHITECTURE.md's CI section
+# for the full story). This project's real workflow is direct commits to
+# branches (git am + push from a device, no PR-gated merges), so a commit
+# on any branch that also happened to be part of an open PR was triggering
+# TWO builds: one for the exact pushed commit, one for a synthetic
+# GitHub-generated PR merge commit. Those can diverge (different tree,
+# different Gradle cache warm state) and show different pass/fail results
+# for what looks like "the same" run — the actual root cause behind CI
+# appearing to fail then immediately succeed with no code change in
+# between. One trigger, one build, one unambiguous result per commit.
 on:
   push:
-    branches: ["**"]
-  pull_request:
     branches: ["**"]
 
 permissions:

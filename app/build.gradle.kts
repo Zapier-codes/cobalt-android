@@ -102,11 +102,13 @@ dependencies {
     // arthenica/ffmpeg-kit (not a Flutter wrapper), rebuilt for Android's
     // 16KB page-size requirement. Its android/README.md is the unmodified
     // original arthenica Android docs — confirmed real drop-in, zero
-    // import changes needed. Version `6.1.7` is a best-match against this
-    // group's sibling artifacts, not read directly off this exact
-    // artifact's own Maven page (see DEPENDENCY_NOTE's "VERSION NOTE" for
-    // what to do if this specific line fails to resolve).
-    implementation("io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7")
+    // import changes needed. Version `6.1.4` confirmed directly off this
+    // exact artifact's own mvnrepository.com page (its only published
+    // version) — an earlier guess of `6.1.7`, inferred from a sibling
+    // artifact in the same group instead, was wrong; see
+    // DEPENDENCY_NOTE's "VERSION NOTE — CORRECTED" for the full story and
+    // what to do if a future version bump is needed.
+    implementation("io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.4")
     // fallback serving leftover artifacts from a previous, different
     // dependency declaration, not evidence this pin is actually valid.
     // Always verify the exact version against Maven Central's own

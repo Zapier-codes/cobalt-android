@@ -1149,20 +1149,28 @@ and ffmpeg handles the rest at full capacity, not a limited/preview subset.
   class turning up in that fork's own crash log was not actually proof it
   did (the verification that felt thorough checked the wrong thing).
   **Now fixed** with
-  `io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7` —
+  `io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.4` —
   `JamaisMagic/ffmpeg-kit-16KB`, a genuine from-source fork (its
   `android/README.md` is the unmodified original arthenica Android docs —
   confirmed real drop-in, zero import changes), rebuilt for Android's
   16KB page-size requirement (unrelated to the retirement — a separate,
-  real Play Store requirement). `6.1.7` is a best-match version against
-  sibling artifacts in the same Maven group, not read directly off this
-  exact artifact's own page — if CI fails specifically on "could not
-  find" this coordinate (not an unresolved-reference compile error), bump
-  the version at
-  central.sonatype.com/artifact/io.github.jamaismagic.ffmpeg/ffmpeg-kit-lts-full-gpl-16kb
-  before assuming anything else is wrong. **Lesson for future sessions,
-  stated plainly**: when a fork/replacement package fails or is being
-  chosen, verify what the artifact is actually *built for* (plain Android
+  real Play Store requirement). **Update, confirmed not guessed:** the
+  artifact/name was always correct; the version wasn't — an initial
+  `6.1.7` was inferred from a sibling artifact in the same Maven group
+  (`ffmpeg-kit-lts-16kb`, genuinely at `6.1.7`) rather than read off this
+  exact artifact's own page, and CI's "could not find" error on exactly
+  that coordinate+version confirmed the guess was wrong. Fetched
+  `ffmpeg-kit-lts-full-gpl-16kb`'s own mvnrepository.com page directly:
+  it has exactly one published version, `6.1.4` (Feb 27, 2026), now
+  pinned. Also independently re-confirmed the `-gpl` requirement itself
+  isn't just a naming preference: `FfmpegTranscoder.buildArgs()` emits
+  `-c:v libx264` for `TranscodeProfile.Video` entries with
+  `videoCodec == "libx264"`, so an LGPL-only package (this group's own
+  `ffmpeg-kit-lts-16kb`, or the unrelated `com.moizhassan.ffmpeg` package
+  that turned up during this same research pass) would silently fail
+  every MP4 tier in `TranscodeProfile.ALL_VIDEO` at runtime. **Lesson for
+  future sessions, stated plainly**: when a fork/replacement package fails
+  or is being chosen, verify what the artifact is actually *built for* (plain Android
   library vs. Flutter/React Native plugin wrapper vs. something else) —
   matching class names in someone else's stack trace or issue tracker is
   not the same thing as a matching public API surface, and checking the
