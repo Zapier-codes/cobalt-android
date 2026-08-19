@@ -20,7 +20,13 @@ class SettingsSheet : BottomSheetDialogFragment() {
     private val viewModel: DownloadQueueViewModel by activityViewModels()
     private lateinit var settings: SettingsRepository
 
-    var onCobaltUrlChanged: ((String) -> Unit)? = null
+    // The instance URL used to be a manual field here (see git history);
+    // it's now centrally managed via RemoteConfigRepository's
+    // remote-config.json, not per-device — see that class's doc comment.
+    // `onCobaltUrlChanged` had no subscriber (verified before removing —
+    // grepped for `SettingsSheet(` construction sites and the callback
+    // itself; nothing outside this file ever read it), so it's gone too,
+    // not just its call site.
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -32,7 +38,6 @@ class SettingsSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         settings = SettingsRepository(requireContext())
 
-        binding.etCobaltUrl.setText(settings.cobaltInstanceUrl)
         binding.etCobaltApiKey.setText(settings.cobaltApiKey)
         binding.switchAudioOnly.isChecked = settings.audioOnlyMode
         binding.switchClipboard.isChecked = settings.clipboardTriggerEnabled
@@ -61,13 +66,7 @@ class SettingsSheet : BottomSheetDialogFragment() {
 
     override fun onStop() {
         super.onStop()
-        val url = _binding?.etCobaltUrl?.text?.toString()?.trim() ?: return
-        if (url.isNotBlank() && url != settings.cobaltInstanceUrl) {
-            settings.cobaltInstanceUrl = url
-            onCobaltUrlChanged?.invoke(url)
-        }
-
-        // Unlike the URL field, blank here is a valid, meaningful value
+        // Unlike the old URL field, blank here is a valid, meaningful value
         // ("stop sending an API key") — always write, don't skip on blank.
         val apiKey = _binding?.etCobaltApiKey?.text?.toString()?.trim().orEmpty()
         if (apiKey != settings.cobaltApiKey) {

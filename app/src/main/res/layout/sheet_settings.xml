@@ -21,31 +21,10 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/settings_cobalt_url"
-            android:textColor="@color/cobalt_text_secondary"
-            android:fontFamily="@font/ibm_plex_mono_regular"
-            android:textSize="11sp"
-            android:layout_marginBottom="4dp" />
-
-        <EditText
-            android:id="@+id/etCobaltUrl"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textUri"
-            android:textColor="@color/cobalt_text_primary"
-            android:fontFamily="@font/ibm_plex_mono_regular"
-            android:textSize="13sp"
-            android:background="@color/cobalt_surface_elevated"
-            android:padding="10dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
             android:text="@string/settings_cobalt_api_key"
             android:textColor="@color/cobalt_text_secondary"
             android:fontFamily="@font/ibm_plex_mono_regular"
             android:textSize="11sp"
-            android:layout_marginTop="16dp"
             android:layout_marginBottom="4dp" />
 
         <EditText
