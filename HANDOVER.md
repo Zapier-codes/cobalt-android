@@ -1,4 +1,4 @@
-# Cobalt-Android — Handover (Session 10 → 11, this session)
+# Cobalt-Android — Handover (Session 12, this session)
 
 **Start by cloning the repo fresh: `git clone https://github.com/Zapier-codes/cobalt-android.git`**
 Do not trust any file content quoted in this document or prior handovers as
@@ -7,6 +7,31 @@ current — clone, then read the real files.
 **This file itself should now be committed at the repo root as
 `HANDOVER.md`.** If you don't find it there, this session's work hasn't
 landed yet.
+
+## What Session 12 did: fixed PR #40's remaining Kotlin compile errors
+
+Patch `0008` (commit `de4fce4` locally — **not pushed**, per workflow
+below). Full technical detail is in `ARCHITECTURE.md`'s "CI build failures
+found and fixed" section, Round 2 — read that before touching any of these
+four files again. Short version:
+
+- Independently re-verified (live web search, not just trusting the prior
+  commit) that Session 11's ffmpeg-fork swap in `06c49e6` is real and
+  correct — no change needed there.
+- Fixed three separate, genuinely-current bugs the CI log surfaced:
+  `MainActivity.kt`'s missing `ActivityMainBinding`/
+  `setupWithNavController` imports (present since nearly the start of the
+  project — never caught because this is close to the first real compiler
+  run this codebase has ever had), `QualityOptionAdapter.kt`'s
+  `DiffUtil.ItemCallback` nullable-type override mismatch, and
+  `TranscodeWorker.kt` calling a suspend function from a non-suspend
+  FFmpegKit callback.
+
+**Immediate next step**: apply patch `0008` (see the push command given to
+the user this session) and watch the next GitHub Actions run. If it's
+still red, read the new log carefully before assuming any of the above —
+this session could not trigger or watch CI itself, only reason about the
+pasted log text, so there could be a fifth error type not yet seen.
 
 ## Workflow, unchanged from Session 9/10: don't build locally,
 ## commit-only + patch handoff
