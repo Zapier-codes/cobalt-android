@@ -1,0 +1,27 @@
+# Render Blueprint for deploying imputnet/cobalt's official API image.
+# This is infrastructure for the backend cobalt instance the Android app
+# (this repo) talks to — not part of the Android build itself, and not
+# read by anything in .github/workflows/build.yml.
+#
+# Deploy: Render dashboard -> New -> Blueprint -> point at this repo,
+# or `render blueprint launch` (Render CLI) from a checkout of this repo.
+#
+# After the first deploy, Render assigns a real *.onrender.com subdomain
+# that isn't knowable ahead of time -- update API_URL below to that exact
+# value (with trailing slash) and redeploy. cobalt's own docs are explicit
+# that tunnels won't work correctly until API_URL matches the instance's
+# real public URL. See docs/run-an-instance.md and docs/api-env-variables.md
+# at github.com/imputnet/cobalt for the full env var reference.
+services:
+  - type: web
+    name: cobalt-api
+    runtime: image
+    image:
+      url: ghcr.io/imputnet/cobalt:latest
+    plan: free
+    envVars:
+      - key: API_PORT
+        value: 10000
+      # Placeholder -- see note above. Fix this after the first deploy.
+      - key: API_URL
+        value: https://placeholder.onrender.com/
