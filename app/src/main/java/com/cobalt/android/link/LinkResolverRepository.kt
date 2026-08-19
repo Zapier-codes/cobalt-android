@@ -3,6 +3,7 @@ package com.cobalt.android.link
 import android.content.Context
 import com.cobalt.android.download.DownloadDatabase
 import com.cobalt.android.db.entities.ResolutionCacheEntity
+import com.cobalt.android.remoteconfig.RemoteConfigRepository
 import com.cobalt.android.util.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,6 +44,12 @@ import java.io.IOException
  * URLs, so the read-freshness window is intentionally short
  * (CACHE_FRESHNESS_MILLIS) — much shorter than the row-eviction window
  * (CACHE_EVICTION_MILLIS), which just bounds table growth.
+ *
+ * Instance URL is no longer a per-device Settings field — it's fetched via
+ * [RemoteConfigRepository], centrally managed in this repo's own
+ * `remote-config.json`. See that class's doc comment for the full
+ * fallback chain and why the API key deliberately isn't part of that same
+ * mechanism.
  */
 class LinkResolverRepository(private val context: Context) {
 
@@ -65,6 +72,7 @@ class LinkResolverRepository(private val context: Context) {
 
     private val client = OkHttpClient()
     private val settings = SettingsRepository(context)
+    private val remoteConfig = RemoteConfigRepository(context)
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
     companion object {
@@ -96,7 +104,7 @@ class LinkResolverRepository(private val context: Context) {
     }
 
     private suspend fun resolveFromNetwork(url: String): ResolveResult {
-        val instance = settings.cobaltInstanceUrl.trimEnd('/')
+        val instance = remoteConfig.getCobaltInstanceUrl().trimEnd('/')
         val requestBody = JSONObject().put("url", url).toString().toRequestBody(jsonMedia)
         val requestBuilder = Request.Builder()
             .url(instance)
@@ -106,7 +114,10 @@ class LinkResolverRepository(private val context: Context) {
         // Only set if the instance owner has API-key auth turned on
         // (settings.cobaltApiKey blank = the public/no-auth case, the
         // default). Real cobalt auth scheme, not invented here — see
-        // github.com/imputnet/cobalt docs/api.md.
+        // github.com/imputnet/cobalt docs/api.md. Deliberately still a
+        // per-device Settings field, not part of RemoteConfigRepository's
+        // remote-config.json — see that class's doc comment for why a
+        // secret can't live in a public repo's config file.
         val apiKey = settings.cobaltApiKey
         if (apiKey.isNotBlank()) {
             requestBuilder.header("Authorization", "Api-Key $apiKey")
@@ -117,7 +128,7 @@ class LinkResolverRepository(private val context: Context) {
             client.newCall(request).execute()
         } catch (e: IOException) {
             return ResolveResult.Error(
-                "Couldn't reach the cobalt instance ($instance). Check your connection or the instance URL in Settings."
+                "Couldn't reach the cobalt instance ($instance). Check your connection, or that the deployed instance is still up."
             )
         }
 
