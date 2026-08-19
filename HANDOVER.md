@@ -22,6 +22,68 @@ landed yet.
   before starting anything, same as always, since parallel manual sessions
   are still possible.
 
+## Continuation this session: CI's first real build run found two failures,
+## both now fixed (patch `0008`)
+
+This is a same-session continuation of the remote-config work below —
+after that landed, the user pasted a live GitHub Actions failure log
+(job "Fix CI build failure: activity_main.xml..." / run #37). Investigated
+and found the log was from a run with **two** AAPT failures, not one:
+
+1. `activity_main.xml`'s `tools:layout` without `xmlns:tools` — already
+   fixed in `ad475ef` (already on `origin/master`, authored by a
+   different actor, `Verify Sandbox <verify@sandbox.local>` — not this
+   chat session; presumably another concurrent fixing pass, worth noting
+   in case it indicates another background/CI-triggered fixer running
+   against this repo now that Hermes itself is gone).
+2. **Still broken after `ad475ef`**: `fragment_settings.xml` (Phase 13)
+   used a `<layout>` (data-binding) root tag, but the project only has
+   `viewBinding` enabled, never `dataBinding`. This is what the pasted
+   log's actual error text was about — read closely, it was not the
+   `activity_main.xml` error repeated. Fixed by unwrapping `<layout>`
+   (verified `SettingsFragment.kt` uses plain ViewBinding with no
+   data-binding-only features, so nothing depends on it — full reasoning
+   in `ARCHITECTURE.md`'s new "CI build failures" section, read that
+   before touching this file again). Diffed with `git diff -b -w` to
+   confirm the change is wrapper-only, zero content/behavior change.
+
+Both commits (`ec282e1`, `4d841fc`) are local-only, per the workflow
+above. Patch `0008` (`git format-patch origin/master..HEAD`) covers both;
+verified via `git am` against a **fresh fetch of the real, live
+`origin/master`** (not just this sandbox's possibly-stale local copy —
+see "Standing verification habits" below), and the resulting
+`fragment_settings.xml` was confirmed to parse as well-formed XML. Number
+`0008` is a best guess, not a confirmed continuation of a prior count —
+this sandbox's `/mnt/user-data/outputs` was empty at the start of this
+turn (fresh sandbox instance), so the actual last-used number from
+Session 10/11's earlier patches couldn't be cross-checked here; rename if
+it collides with something already downloaded.
+
+**Not yet done:** an actual green GitHub Actions run confirming both
+fixes together — this sandbox can watch neither `gh run list` nor trigger
+a re-run. That confirmation is the first thing to check next session.
+
+**Also carried in this sandbox, not yet delivered:** a substantial
+FFmpeg-based dynamic quality/format transcoding feature (video ladder
+2160p→360p + VP9, audio ladder FLAC/MP3-320/AAC/Opus/Vorbis, a real
+`QualitySelectionSheet` bottom sheet, `TranscodeWorker` via WorkManager,
+etc. — full file list would go here once it lands) was built earlier in
+this sandbox's session against an older base commit (`85644bc`), then
+against `85644bc`'s successor, and is now stashed twice
+(`git stash list`) rather than committed, because `origin/master` moved
+forward substantially (through Phase 19, the remote-config
+infrastructure, and now this CI fix) each time before it could be
+finished and based cleanly. **It is not lost** — it's real, reviewed
+code sitting in this sandbox's stash — but it needs a fresh rebase
+against the current tip (this session's own CI-fix commits included)
+before it can be committed and patched. Flagging this explicitly so nei-
+ther this session nor the next mistakes "not committed yet" for
+"doesn't exist" or re-does the work from scratch. If this sandbox
+instance persists into a follow-up turn, finishing that rebase is the
+natural next step; if not, the FFmpeg feature needs to be rebuilt in a
+fresh sandbox (the design decisions and verified ffmpeg-kit API details
+belong in `ARCHITECTURE.md` once it lands either way).
+
 ## What this session did: dynamic, centrally-managed cobalt instance URL
 
 Starting point: Session 10 had wired a per-device `cobaltApiKey` Settings
@@ -108,12 +170,15 @@ real repo.
 ```
 cd cobalt-android
 git fetch origin
-git log --oneline origin/master -12
+git log --oneline origin/master -14
 ```
-Expect (top of log): "Document the remote-config instance URL system in
-ARCHITECTURE.md", the `remote-config.json` + workflow commit, the
-stale-comment fix, the `SettingsSheet` field-removal commit, the
-`LinkResolverRepository` wiring commit, the `RemoteConfigRepository` +
+Expect (top of log, once patch `0008` is applied+pushed): "Document the
+two CI build failures + fixes in ARCHITECTURE.md", "Fix CI build failure:
+fragment_settings.xml used <layout>...", then `ad475ef` ("Fix CI build
+failure: activity_main.xml..."), "Session 10->11 handover: remote-config
+instance URL system complete", the `remote-config.json` + workflow
+commit, the stale-comment fix, the `SettingsSheet` field-removal commit,
+the `LinkResolverRepository` wiring commit, the `RemoteConfigRepository` +
 `SettingsRepository` commit, then `373fdc5` ("Add render.yaml Blueprint")
 and Session 10's commits before that.
 
@@ -142,17 +207,21 @@ and Session 10's commits before that.
 
 ## Immediate next steps
 
-1. **`git fetch` and re-read `ARCHITECTURE.md`'s new infrastructure
-   section before anything else.**
-2. **Generate and present the patch** for this session's work if not
-   already done in this same session — check the last patch number used
-   (search prior handovers/`ARCHITECTURE.md`) and continue the sequence.
-3. **Confirm CI actually builds clean** after this patch lands —
-   `SettingsSheet`'s binding change is the one part of this session with
-   any real compile risk.
-4. **If the user wants the Actions-variable path live**, that's a manual
-   GitHub repo-settings step only they (or someone with admin access) can
-   do — not something a future session can complete from this sandbox.
+1. **Apply patch `0008` (`git am`) and push, then check the GitHub Actions
+   run that triggers.** This is the actual outstanding verification for
+   both CI fixes above — neither has been confirmed green yet.
+2. **If CI is still red after that**, read the new failure closely before
+   assuming it's a third instance of the same two bug classes swept for
+   above — it may be a genuinely different error now that the first two
+   are out of the way.
+3. **Rebase and land the stashed FFmpeg quality/format transcoding
+   feature** described above — real, reviewed code, currently stuck
+   behind two `git stash` entries in this sandbox because
+   `origin/master` kept moving forward while it was being built. This is
+   probably the single highest-value next step if this sandbox instance
+   continues.
+4. **`git fetch` and re-read `ARCHITECTURE.md`'s infrastructure section**
+   before anything else, same standing advice as always.
 5. **Confirm a real resolve against `cobalt-api-yuol.onrender.com` works
    end-to-end** (paste a link in Home, confirm the picker shows real
    formats) — this still hasn't been done by any session, per Session
