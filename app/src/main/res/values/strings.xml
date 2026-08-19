@@ -38,6 +38,8 @@
     <string name="channel_downloads_desc">Download progress and completion</string>
     <string name="retry_notification_title">Ready to retry</string>
     <string name="resolution_picker_title">choose a format</string>
+    <string name="settings_cobalt_api_key">Cobalt API key (optional)</string>
+    <string name="settings_cobalt_api_key_hint">Api-Key value from your instance owner</string>
     <string name="settings_default_format">default format</string>
     <string name="settings_format_ask">ask</string>
     <string name="settings_format_video">video</string>

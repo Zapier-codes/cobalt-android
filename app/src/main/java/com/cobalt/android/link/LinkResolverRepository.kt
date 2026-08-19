@@ -98,11 +98,20 @@ class LinkResolverRepository(private val context: Context) {
     private suspend fun resolveFromNetwork(url: String): ResolveResult {
         val instance = settings.cobaltInstanceUrl.trimEnd('/')
         val requestBody = JSONObject().put("url", url).toString().toRequestBody(jsonMedia)
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(instance)
             .header("Accept", "application/json")
             .post(requestBody)
-            .build()
+
+        // Only set if the instance owner has API-key auth turned on
+        // (settings.cobaltApiKey blank = the public/no-auth case, the
+        // default). Real cobalt auth scheme, not invented here — see
+        // github.com/imputnet/cobalt docs/api.md.
+        val apiKey = settings.cobaltApiKey
+        if (apiKey.isNotBlank()) {
+            requestBuilder.header("Authorization", "Api-Key $apiKey")
+        }
+        val request = requestBuilder.build()
 
         val response = try {
             client.newCall(request).execute()

@@ -37,6 +37,18 @@ class SettingsRepository(context: Context) {
         get() = prefs.getString("cobalt_url", "https://cobalt.tools") ?: "https://cobalt.tools"
         set(v) { prefs.edit().putString("cobalt_url", v).apply() }
 
+    /**
+     * Optional. cobalt's real auth scheme (github.com/imputnet/cobalt,
+     * docs/api.md) is `Authorization: Api-Key <value>` on every request —
+     * only required if the configured instance ([cobaltInstanceUrl]) has
+     * API-key auth turned on server-side; the public cobalt.tools default
+     * doesn't. Blank means "send no Authorization header", which
+     * [LinkResolverRepository] treats as the no-auth-required case.
+     */
+    var cobaltApiKey: String
+        get() = prefs.getString("cobalt_api_key", "") ?: ""
+        set(v) { prefs.edit().putString("cobalt_api_key", v.trim()).apply() }
+
     var audioOnlyMode: Boolean
         get() = prefs.getBoolean("audio_only", false)
         set(v) { prefs.edit().putBoolean("audio_only", v).apply() }

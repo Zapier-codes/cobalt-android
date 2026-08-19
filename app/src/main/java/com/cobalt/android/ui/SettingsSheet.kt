@@ -33,6 +33,7 @@ class SettingsSheet : BottomSheetDialogFragment() {
         settings = SettingsRepository(requireContext())
 
         binding.etCobaltUrl.setText(settings.cobaltInstanceUrl)
+        binding.etCobaltApiKey.setText(settings.cobaltApiKey)
         binding.switchAudioOnly.isChecked = settings.audioOnlyMode
         binding.switchClipboard.isChecked = settings.clipboardTriggerEnabled
 
@@ -64,6 +65,13 @@ class SettingsSheet : BottomSheetDialogFragment() {
         if (url.isNotBlank() && url != settings.cobaltInstanceUrl) {
             settings.cobaltInstanceUrl = url
             onCobaltUrlChanged?.invoke(url)
+        }
+
+        // Unlike the URL field, blank here is a valid, meaningful value
+        // ("stop sending an API key") — always write, don't skip on blank.
+        val apiKey = _binding?.etCobaltApiKey?.text?.toString()?.trim().orEmpty()
+        if (apiKey != settings.cobaltApiKey) {
+            settings.cobaltApiKey = apiKey
         }
     }
 
