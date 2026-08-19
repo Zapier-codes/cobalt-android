@@ -31,7 +31,37 @@ android {
     }
 
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { viewBinding = true }
+    buildFeatures {
+        viewBinding = true
+        // Phase 22: Compose migration foundation. viewBinding stays on
+        // (deliberately not a switch) — every existing Fragment/XML screen
+        // keeps working exactly as-is; Compose screens land one at a time
+        // via ComposeView embedded in a Fragment's existing onCreateView,
+        // the standard incremental-adoption path, not a big-bang rewrite.
+        // See ARCHITECTURE.md Phase 22 for the reasoning and the rest of
+        // the migration plan.
+        compose = true
+    }
+    composeOptions {
+        // Kotlin is on 1.9.24 (bumped from 1.9.23 by this same phase,
+        // specifically to land on a version compose-compiler has a
+        // confirmed-compatible release for — see the version note below).
+        // This project is pre-Kotlin-2.0, so Compose uses the classic
+        // kotlinCompilerExtensionVersion mechanism, NOT the newer
+        // org.jetbrains.kotlin.plugin.compose Gradle plugin (that plugin
+        // requires Kotlin 2.0+; using it here would silently target the
+        // wrong Kotlin entirely). 1.5.14 is confirmed, not guessed: read
+        // directly off developer.android.com/jetpack/androidx/releases/
+        // compose-compiler, which states "This compiler release is
+        // targeting Kotlin 1.9.24" for exactly this version. Given this
+        // project's own ffmpeg-kit history of shipped-then-broken guessed
+        // versions, every version in this block was checked against a
+        // primary source before being pinned — see ARCHITECTURE.md Phase
+        // 22 for the full verification trail (Compose BOM 2024.06.00 and
+        // Coil 2.6.0 below were checked the same way, both era-matched to
+        // this same Kotlin 1.9.24 / May–June 2024 release window).
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
 }
 
 dependencies {
@@ -113,6 +143,45 @@ dependencies {
     // dependency declaration, not evidence this pin is actually valid.
     // Always verify the exact version against Maven Central's own
     // index, not against what a CI log's task list appears to reach.
+
+    // --- Phase 22 (Compose migration foundation) ---
+    // BOM pinned to 2024.06.00, NOT the latest available — deliberately
+    // era-matched to the Kotlin 1.9.24 / compose-compiler 1.5.14 pin
+    // above (BOM 2024.06.00 published June 12 2024, right after Kotlin
+    // 1.9.24's May 2024 release). A newer BOM pulls Compose runtime
+    // artifacts built against newer Compose-compiler feature sets than
+    // 1.5.14 actually supports — confirmed off mvnrepository.com's own
+    // BOM release date, not assumed from "latest is always fine."
+    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    implementation(composeBom)
+    androidTestImplementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.runtime:runtime")
+    // Lets a ComposeView embedded in a classic Fragment call
+    // dispose-on-viewtree-lifecycle-destroyed correctly, and lets
+    // Composables collect existing LiveData/StateFlow from this
+    // project's existing ViewModels directly (observeAsState /
+    // collectAsStateWithLifecycle) instead of needing every ViewModel
+    // rewritten before a single screen can move to Compose.
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    // Real remote thumbnail/avatar loading — this project had NO image-
+    // loading library at all before this phase (confirmed by grepping
+    // this file for "Coil"/"Glide" before adding this: zero hits), which
+    // is part of why Home never had a real YouTube-style thumbnail feed
+    // — there was no way to load one efficiently. Coil 2.x (not 3.x/
+    // coil3, which relocated groupId to io.coil-kt.coil3 for a
+    // Compose-Multiplatform-first architecture this Android-only project
+    // doesn't need) chosen for the same era-matching reason as the BOM
+    // above — 2.6.0 published Feb 2024, squarely compatible with this
+    // Kotlin/Compose pin, and coil-compose already depends on OkHttp by
+    // default, which this project already uses everywhere else.
+    implementation("io.coil-kt:coil-compose:2.6.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

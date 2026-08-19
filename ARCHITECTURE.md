@@ -108,24 +108,40 @@ Design references (patterns only, no code or assets copied):
   queue with progress, and a downloaded-files library organized for offline
   playback.
 
-## Tech stack (unchanged from existing repo)
-- Kotlin, View-based UI (existing `activity_main.xml` / `MainActivity.kt`
-  approach — NOT Compose, to match what's already in the repo)
-- **No WebView** — removed this session. Link resolution is a direct API
-  call (OkHttp, already a dependency), not a WebView/JS-bridge.
+## Tech stack
+- Kotlin. **UI toolkit is mid-migration as of Phase 22 (Session 14):**
+  every screen through Phase 20 is View-based (Fragments/XML/ViewBinding)
+  — that WAS accurate as "unchanged from existing repo" through Phase 20,
+  but is no longer the target. Per the user's explicit direction (see
+  "Major pivot after Phase 20" above), new screens are being migrated to
+  **Jetpack Compose**, Phase by Phase (23–26). Both coexist during the
+  migration — `viewBinding` and `compose` are both `true` in
+  `app/build.gradle.kts` on purpose, not a transitional mistake to
+  "clean up"; don't remove either until Phase 26 says the migration is
+  actually complete.
+- **No WebView** — removed in an earlier session. Link resolution is a
+  direct API call (OkHttp, already a dependency), not a WebView/JS-bridge.
 - Room for local persistence — `DownloadRecord`/`DownloadDao` already exist,
   see "Unified enhancement" above.
-- Material Components (already a dependency per `build.gradle.kts`)
+- Material Components (View system) / Material3 (Compose, Phase 22+) —
+  both present during the migration, see above.
 - WorkManager for background downloads — `RetryDownloadWorker` already
   exists; only genuinely new WorkManager usage should be added if a phase
   needs something the existing `DownloadService` doesn't cover.
-- Standard Android `ViewModel` + `LiveData`/`Flow`
+- Standard Android `ViewModel` + `LiveData`/`Flow` — existing ViewModels
+  are reused as-is by Compose screens (`observeAsState`/
+  `collectAsStateWithLifecycle`, both dependencies added in Phase 22), not
+  rewritten to `StateFlow` just because the UI moved to Compose.
+- Coil (Phase 22+) for remote image loading in Compose screens — this
+  project had none before Phase 22.
 
 ## Package structure (target — build toward this, don't require it before
    phase 1 is done)
 ```
 app/src/main/java/com/cobalt/android/
 ├── ui/
+│   ├── theme/            NEW in Phase 22 — CobaltTheme (Compose Material3),
+│   │                     shared by every Compose-migrated screen (23+)
 │   ├── home/            HomeFragment, HomeViewModel
 │   ├── shorts/          ShortsFragment, ShortsViewModel, ShortsAdapter
 │   ├── downloads/        DownloadsLibraryFragment, DownloadsViewModel
@@ -152,7 +168,7 @@ app/src/main/java/com/cobalt/android/
 └── MainActivity.kt       hosts bottom nav + fragment container (already exists)
 ```
 
-## Build Sequencing — 21 phases, in strict order
+## Build Sequencing — 27 phases, in strict order
 
 **Restructured from 8 phases to 20 in Session 5.** The original 8-phase plan
 bundled too much real work into single phases (e.g. old Phase 5 was "build
@@ -1304,9 +1320,162 @@ compiler ran" means "unverified," but should also not assume it means
 
 ---
 
-### Phase 21 — Final gate: architecture_complete
+## Major pivot after Phase 20: full Compose migration (Phases 22–26)
+
+**Context, not to be lost by a future session:** the user's actual, direct
+feedback on Phases 1–20's real UI was that it does not meet the bar they
+asked for — Home was never built as a real feed (Phase 3 built only a
+paste-link box with an intentionally-empty reserved `FrameLayout`; there
+has never been a data source, thumbnail loading, or grid/row UI behind
+it), and Shorts' per-item chrome (`item_short_video.xml`) uses literal
+Android-API-1 stock system drawables (`android.R.drawable.btn_star_big_off`
+for "like", `ic_menu_save`, `ic_menu_share`) with no avatar, no username
+styling, no follow affordance, no formatted counts, no progress bar —
+confirmed by reading both files directly this session, not assumed from
+the user's description. The user asked for a home feed that feels like a
+real shipped app (their reference: YouTube) and a Shorts screen that
+feels like a real shipped app (their reference: TikTok), and pointed to
+a concrete, real, working example of "an app that already looks and
+feels right" — `github.com/phoenix-boss/echo-music`, a GPLv3 Jetpack
+Compose YouTube-Music client, cloned into a sandbox and read directly
+this session (not assumed from search results).
+
+**Why "copy it verbatim," as literally requested, isn't the actual right
+move — checked, not just argued:**
+1. **Toolkit mismatch.** echo-music is 100% Jetpack Compose (191
+   `@Composable` files found, zero XML layouts). cobalt-android is
+   classic Fragments/XML/ViewBinding across all 20 phases so far. A
+   Composable and an XML `<layout>` are different code in a different
+   paradigm — "copy the files" isn't mechanically meaningful across that
+   boundary; it requires rewriting the UI layer, not importing files.
+2. **Domain mismatch for most of it.** echo-music is 14 Gradle modules —
+   `innertube`, `lrclib` (lyrics), `kugou` (karaoke), `shazamkit` (song
+   recognition), `canvas` (Spotify-style video loops for songs),
+   `betterlyrics`, `discord` (rich presence), `spotify` (playlist
+   import), `listentogether`, `eq`, `widget`... Lyrics providers, song
+   recognition, and a graphic equalizer have no video/Shorts/download
+   equivalent to "wire the complete logic" into. Only the shell —
+   navigation, home-feed layout pattern, theming, mini-player pattern —
+   is actually domain-transferable to this app.
+3. **License.** echo-music is GPLv3. cobalt-android has no LICENSE file
+   at all (checked: `ls LICENSE*` in the repo root returns nothing) —
+   copying GPLv3 source into it wholesale is a real copyleft decision,
+   not just a technical one, and shouldn't happen silently as a side
+   effect of a UI-polish request.
+
+**User's explicit decision, given this tradeoff (asked directly, not
+assumed):** migrate cobalt-android to Compose, matching the reference
+more closely, accepting the larger/slower path over staying in Views.
+This is the authoritative direction for every phase below and for any
+future UI work in this app — new screens should be built in Compose,
+not new XML.
+
+**What *is* actually being carried over from echo-music, and how:**
+not files — verified, real patterns, re-implemented in cobalt-android's
+own package with its own (much smaller) dependency footprint:
+- Material3 with Android 12+ dynamic color, falling back to a fixed
+  brand color scheme — echo-music's fallback uses `com.materialkolor`
+  (seed-color → full M3 scheme generation) plus per-track album-art
+  palette extraction; neither was pulled into cobalt-android, since
+  there's no "art" for a downloaded video/short the way there is for a
+  song, and this app already has a designed, working fixed dark palette
+  (`/values/colors.xml`'s `cobalt_*` colors, used throughout every
+  existing XML screen) to fall back to instead of generating one from a
+  seed.
+- Home's real layout pattern from the reference (screenshot-confirmed,
+  not assumed): category chips row → hero carousel → labeled horizontal
+  rows, persistent mini-player bar pinned above the bottom nav.
+- A pure-black dark mode toggle (echo-music's `pureBlack` param) —
+  directly reusable pattern, cobalt-android's own dark palette is
+  already near-black by default (`cobalt_background = #000000`) so this
+  is a natural fit, not an import.
+
+### Phase 22 — Compose migration foundation ✅ done (Session 14)
+**Files (actual):**
+- `build.gradle.kts` (root) — Kotlin bumped `1.9.23` → `1.9.24`, KSP
+  bumped to match (`1.9.24-1.0.20`). This bump exists for one specific,
+  checked reason: it lands on a Kotlin version compose-compiler has a
+  *confirmed* release for (see below) — it is not a general "keep
+  current" bump and shouldn't be treated as license to bump other
+  versions opportunistically in the same commit.
+- `app/build.gradle.kts` — `buildFeatures.compose = true` (added
+  alongside the existing `viewBinding = true`, not replacing it — every
+  existing Fragment/XML screen is unchanged and keeps working; Compose
+  screens land one at a time via `ComposeView` embedded in a Fragment's
+  existing `onCreateView`, the standard incremental-adoption path, not
+  a big-bang rewrite that would block on migrating all 20 phases' worth
+  of UI before anything ships). `composeOptions.kotlinCompilerExtensionVersion
+  = "1.5.14"` — confirmed, not guessed, by reading
+  developer.android.com/jetpack/androidx/releases/compose-compiler
+  directly, which states "This compiler release is targeting Kotlin
+  1.9.24" for exactly this version (this project has a real, painful
+  history of guessed dependency versions breaking CI — the ffmpeg-kit
+  saga in Phase 20 — so every version pinned in this phase was checked
+  against a primary source, not inferred from a sibling package or
+  assumed current). Compose BOM pinned to `2024.06.00` (confirmed via
+  mvnrepository.com's own listing: published June 12 2024, right after
+  Kotlin 1.9.24's May 2024 release — era-matched to the compiler pin
+  above, not "latest"). `io.coil-kt:coil-compose:2.6.0` added for real
+  remote image loading — confirmed via search this project had **zero**
+  image-loading library before this phase (part of why Home never had
+  real thumbnails: there was no way to load one). Coil 2.x chosen over
+  3.x/`coil3` deliberately — 3.x relocated groupId to
+  `io.coil-kt.coil3` for a Compose-Multiplatform-first architecture
+  this Android-only app doesn't need; 2.6.0 (Feb 2024) is era-matched
+  to the rest of this pin set.
+- `app/src/main/java/com/cobalt/android/ui/theme/Theme.kt` — real,
+  working `CobaltTheme` composable: Material3 + Android 12+ dynamic
+  color with a fixed-palette fallback built from this app's own
+  existing `cobalt_*` brand colors (not invented), plus a `pureBlack`
+  toggle. Adapted from the verified echo-music pattern per the
+  licensing/domain reasoning above — this file is original code
+  written for this app, not copied text.
+
+**Definition of Done:**
+1. ✅ `buildFeatures.compose = true` is set and every dependency it needs
+   is present with a checked, real, mutually-compatible version — not
+   yet confirmed against an actual Gradle build (this sandbox still has
+   no Android toolchain — same standing limitation as every phase since
+   Phase 4), which is genuinely the first thing to verify next.
+2. ✅ `CobaltTheme` exists, compiles by inspection (brace/paren-balance
+   checked), and is ready for the first real screen to wrap itself in.
+3. **Not done, deliberately not attempted this phase:** no screen has
+   actually been migrated yet. Phases 23–26 below are a plan, not a
+   built result — writing detailed, confident Definition-of-Done
+   write-ups for screens that don't exist yet would misrepresent them
+   as more decided than they are; each gets its own real write-up only
+   once actually built, same as every phase before it in this file.
+
+### Phase 23 — Home screen rebuilt in Compose (planned, not started)
+Needs a **real, new data source** first — Home has never had one; the
+existing `feedContainer` in `fragment_home.xml` has been an intentionally
+empty reservation since Phase 3. Likely reuses/extends the Shorts
+pipeline's Innertube integration (`InnertubeShortsSource` pattern) for
+regular-length videos rather than building a fourth parallel YouTube
+client from scratch. UI: chips → hero carousel → rows, per the reference
+pattern above, in Compose, using Coil for real thumbnails.
+
+### Phase 24 — Shorts screen redesigned in Compose (planned, not started)
+The **data/playback layer is not broken and should not be rewritten** —
+`ShortsFeedRepository`, the four merged sources, and `ShortsFragment`'s
+ExoPlayer/preload logic (Phase 2, 18) are real and working; this phase is
+specifically the per-item UI chrome (`item_short_video.xml`'s stock-icon
+problem) moving to Compose, likely via a `ComposeView` per `ViewHolder`
+row inside the existing `ViewPager2`, not a rewrite of the player
+lifecycle itself.
+
+### Phase 25 — Downloads + Settings screens migrated to Compose (planned, not started)
+
+### Phase 26 — Remove the legacy View/Fragment/XML system (planned, not started)
+Only once every screen has a real Compose equivalent — `MainActivity`
+becomes a `ComponentActivity` hosting Compose Navigation instead of the
+Navigation Component fragment graph, `viewBinding` comes back off.
+
+---
+
+### Phase 27 — Final gate: architecture_complete
 **Definition of Done (all must be true):**
-1. Phases 1–20 above are all individually done per their own Definition of
+1. Phases 1–26 above are all individually done per their own Definition of
    Done, verified by inspecting the actual repo, not by trusting a prior
    session's summary.
 2. Only once ALL of the above are true is `architecture_complete: true`

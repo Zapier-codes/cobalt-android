@@ -1,10 +1,119 @@
-# Cobalt-Android — Handover (Session 13, this session)
+# Cobalt-Android — Handover (Session 14, this session)
 
 **Start by cloning the repo fresh: `git clone https://github.com/Zapier-codes/cobalt-android.git`**
 Do not trust any file content quoted in this document as current —
 clone, then read the real files. `git fetch` + `git log --oneline -10`
 before starting anything, even mid-session — parallel manual sessions
 happen often on this repo (see Actors section).
+
+## Session 14: real UI feedback → full Compose migration decision (major
+## pivot, read this whole section before touching Home/Shorts UI again)
+
+**What happened, in order:**
+1. User gave direct, specific negative feedback on the actual shipped
+   UI: Home doesn't look like a real app (no feed — confirmed by reading
+   `fragment_home.xml`, which has only a paste-link box and an
+   intentionally-empty `feedContainer` `FrameLayout`, unchanged since
+   Phase 3), Shorts "isn't professional" (confirmed by reading
+   `item_short_video.xml`/`ShortsAdapter.kt`: the like button is
+   literally `android.R.drawable.btn_star_big_off`, save/share are
+   `ic_menu_save`/`ic_menu_share` — stock Android-API-1 system icons, no
+   avatar, no username styling, no follow affordance, no counts, no
+   progress bar), videos "aren't playing," and Shorts should be
+   filterable to "drama" content only.
+2. User then gave a concrete reference: `github.com/phoenix-boss/echo-music`,
+   cloned into a sandbox and read directly (not assumed from its
+   README) — asked for it to be copied verbatim, "every component,
+   layout, feel, design."
+3. **Checked before acting on "verbatim," found three real mismatches**
+   (full detail in `ARCHITECTURE.md`'s new "Major pivot after Phase 20"
+   section — this is the authoritative version, don't re-derive it):
+   toolkit (echo-music is 100% Jetpack Compose, cobalt-android is
+   Views/XML — not a file-copy operation across that boundary), domain
+   (echo-music is a 14-module music app — lyrics/karaoke/song-recognition/
+   EQ modules have no video/Shorts equivalent), and license (echo-music
+   is GPLv3, cobalt-android has no LICENSE file at all — copying its code
+   wholesale is a real copyleft decision, not just technical).
+4. **Asked the user directly** (via a real either/or, not assumed):
+   rebuild in Views to match the *feel*, or actually migrate to Compose.
+   **User chose: migrate to Compose.** This is the standing direction for
+   all UI work from here — new screens go in Compose, not new XML.
+5. Landed **Phase 22 (Compose migration foundation)** this same session
+   — see below for what that actually is.
+
+**Don't re-litigate step 3's reasoning or step 4's decision in a future
+session** — the tradeoff was surfaced honestly, the user chose with full
+information, and re-asking "are you sure you don't want to just copy the
+files" wastes their time on a question they already answered.
+
+## Phase 22 landed: Compose toolchain, verified version-by-version (not
+## guessed — this project has a real scar from guessed versions, see
+## Session 13's ffmpeg-kit saga below)
+
+cobalt-android was on Kotlin 1.9.23; echo-music (the reference) is on
+Kotlin 2.3.10 + Compose 1.10.2 — copying those numbers straight over
+would have broken the build immediately (Compose compiler versions are
+tightly locked to Kotlin versions pre-2.0). Checked the real
+compatibility chain instead of guessing, against primary sources:
+
+- `developer.android.com/jetpack/androidx/releases/compose-compiler` —
+  confirmed compose-compiler `1.5.14` states "This compiler release is
+  targeting Kotlin 1.9.24" directly. So: Kotlin bumped `1.9.23` →
+  `1.9.24` (a one-patch-version bump, not a leap), specifically to land
+  on this confirmed pairing.
+- KSP (already used throughout this project for Room codegen) bumped to
+  match: `1.9.24-1.0.20` — confirmed as a real, existing, resolvable
+  release on Maven Central (published May 7 2024), not assumed to exist
+  because the pattern looked right.
+- Compose BOM pinned to `2024.06.00` — confirmed via mvnrepository.com's
+  own listing (published June 12 2024, immediately after Kotlin 1.9.24's
+  release) rather than pinning "latest," which would pull Compose
+  runtime artifacts built against newer compose-compiler feature sets
+  than 1.5.14 actually supports.
+- `io.coil-kt:coil-compose:2.6.0` added for real remote image loading —
+  this project had **zero** image-loading library before this phase
+  (checked by grepping `app/build.gradle.kts` for "Coil"/"Glide" first),
+  which is part of *why* Home never had real thumbnails. Coil 2.x chosen
+  over 3.x/`coil3` deliberately (3.x relocated groupId for a Compose-
+  Multiplatform architecture this Android-only app doesn't need); 2.6.0
+  is era-matched to the rest of this pin set (Feb 2024).
+
+Landed: `buildFeatures.compose = true` alongside the existing
+`viewBinding = true` (not a switch — every existing screen keeps working
+unchanged; Compose lands one screen at a time via `ComposeView`
+interop, per Phase 22's write-up in `ARCHITECTURE.md`), plus
+`ui/theme/Theme.kt` — a real, working `CobaltTheme` composable adapted
+(not copied, see the licensing reasoning above) from echo-music's
+verified Material3-dynamic-color-with-fallback pattern, built on this
+app's own existing `cobalt_*` brand colors.
+
+**Not done, and deliberately not faked:** no screen has actually been
+migrated to Compose yet. `ARCHITECTURE.md` outlines Phases 23–26 (Home
+feed, Shorts redesign, Downloads/Settings, legacy-system removal) as a
+plan only — each gets its own real Definition-of-Done write-up once
+actually built, not a confident-sounding spec for work that hasn't
+started. **Not built against a real Android toolchain** — same standing
+sandbox limitation as always; confirming this whole dependency chain
+actually resolves via GitHub Actions CI is the single most important
+next step, before any further Compose work compounds on top of an
+unverified foundation.
+
+**The "drama shorts only" filter and the "videos aren't playing" bug
+report are both still open, untouched this session** — this session's
+scope was entirely the toolkit-pivot decision and its foundation, per
+the user's own sequencing (the reference-repo request came before either
+of those got picked up). Worth flagging for whoever picks this up:
+"drama shorts" needs the same clarification a prior session already
+raised for a different but related ask — `ARCHITECTURE.md`'s Phase 2
+addendum explicitly declined integrating paywalled apps like
+ReelShort/DramaBox (unofficial reseller APIs, not a legitimate public
+API), so "drama shorts" likely means tuning `ShortsQueryFeeder`'s query
+pool toward drama-genre YouTube content on the existing free sources —
+confirm with the user rather than assuming either reading. "Videos
+aren't playing" was not diagnosed this session — no logcat/symptom
+detail was available, and this sandbox cannot run the app to reproduce
+it; get a specific symptom (black screen? infinite spinner? crash? one
+source or all four?) before guessing at a fix.
 
 ## Continuation (part 3, same session): the real ffmpeg-kit fix + a CI
 ## workflow bug that was making runs look inconsistent
@@ -199,28 +308,46 @@ Investigated each from scratch and fixed:
 
 ## Standing open items (carried forward)
 
-1. **Confirm the CI run after `b74b1c1` is actually green.** This
-   sandbox cannot watch `gh run list` — ask the user directly or wait
-   for a pasted log, and actually verify against it rather than assume.
-2. **A real end-to-end resolve against the deployed Render instance
+1. **New top priority: confirm Phase 22's Compose toolchain actually
+   resolves and compiles via GitHub Actions CI.** Every version in it was
+   checked against a primary source (see Session 14's section above), not
+   guessed — but "checked by reading docs" and "confirmed by a real
+   Gradle run" are still two different things, and this project has a
+   real history (the ffmpeg-kit saga below) of the former not always
+   catching what the latter would. This is more consequential than past
+   dependency checks — a broken Compose toolchain blocks every UI phase
+   from here (23–26), not just one feature.
+2. **Phase 23 (Home feed in Compose) needs a real data-source decision
+   before any UI work** — reuse/extend `InnertubeShortsSource`'s pattern
+   for regular-length videos, or something else; not decided yet, don't
+   assume the Shorts pipeline's exact shape transfers unmodified.
+3. **Clarify "drama shorts only" with the user** before building
+   anything for it — see Session 14's section above for the two readings
+   and why the paywalled-app one was already declined in Phase 2.
+4. **Get a specific symptom for "videos aren't playing"** before
+   attempting a fix — this sandbox cannot reproduce it.
+5. **A real end-to-end resolve against the deployed Render instance
    (`cobalt-api-yuol.onrender.com`) has still never been confirmed by
    any session.** Carried over since Session 10.
-3. **Phase 20 (FFmpeg transcoding) follow-ups**: Settings UI for the two
+6. **Phase 20 (FFmpeg transcoding) follow-ups**: Settings UI for the two
    default-quality preference keys, a cancel button for an in-flight
-   `CONVERTING` row, wiring the quality sheet into Shorts' save action.
-4. **`state.json`'s `architecture_complete` flag** — likely moot now
+   `CONVERTING` row, wiring the quality sheet into Shorts' save action —
+   all lower priority than the Compose migration now.
+7. **`state.json`'s `architecture_complete` flag** — likely moot now
    that the Hermes loop is gone, never explicitly confirmed moot.
-5. Phase 13's light-theme-looks-identical-to-dark gap — documented,
-   accepted, not a blocker.
-6. README.md rewrite and Hermes-file cleanup, above.
+8. Phase 13's light-theme-looks-identical-to-dark gap — documented,
+   accepted, not a blocker (Compose's `CobaltTheme` does define a real
+   light scheme now, per Phase 22 — worth revisiting once a screen
+   actually uses it).
+9. README.md rewrite and Hermes-file cleanup, below.
 
 ## Verify this session's work landed
 
 ```
 cd cobalt-android
 git fetch origin
-git log --oneline origin/master -8
+git log --oneline origin/master -6
 ```
-Expect `b74b1c1` ("Fix CI build failure: swap ffmpeg-kit fork again...")
-at the top once this session's patch is applied and pushed, with
-`c055efb` ("Fix all three real CI compile errors...") beneath it.
+Expect two new commits on top of `621bdab` once this session's patch is
+applied and pushed: a Phase 22 commit (Compose toolchain + `Theme.kt`)
+and this handover/ARCHITECTURE.md documentation commit.
