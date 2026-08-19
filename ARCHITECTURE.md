@@ -1138,7 +1138,38 @@ not the spec's assumed shape.
 
 ---
 
-## Infrastructure (outside the phase system): deployed cobalt instance +
+## CI build failures found and fixed after Phase 19 (not a phase, a bugfix)
+Session 10->11's first-ever real CI run (GitHub Actions Gradle/AAPT build)
+surfaced two pre-existing bugs neither this project's Kotlin/XML nor any
+prior eyeball review had caught, since no build had ever actually run
+before that point:
+1. `activity_main.xml`'s root `CoordinatorLayout` used `tools:layout` (row
+   15) without declaring `xmlns:tools` on the root element — fixed in
+   `ad475ef`. A repo-wide sweep at the time found no other file with the
+   same gap.
+2. `fragment_settings.xml` (Phase 13) used a `<layout>` root tag — the
+   Android *data-binding* wrapper — but this project only ever enabled
+   `buildFeatures.viewBinding`, never `dataBinding`. AAPT's data-binding-
+   aware parser sees `<layout>` regardless of whether the feature flag is
+   on, and hard-errors when it's off (`Found <layout> but data binding is
+   not enabled`). This was the CI run's *second* failure, surfaced only
+   after the first was fixed — the run shown to the session was this one.
+   Fixed by unwrapping `<layout>` (confirmed via `SettingsFragment.kt`
+   that nothing there actually uses data-binding-only features — no
+   `<data>` block, no binding expressions, no `setLifecycleOwner` — so
+   there was nothing to lose by removing the wrapper instead of enabling a
+   second binding system project-wide for one file). Diff confirmed
+   whitespace-only otherwise (`git diff -b -w`) — no content changed. A
+   repo-wide sweep found no other `<layout>`/`<data>` offender.
+
+Both fixes were verified the same way: `git am` the generated patch
+against a fresh fetch of the real, live `origin/master` (not just this
+sandbox's local copy, which can drift — see HANDOVER.md), then confirm
+the resulting file parses as well-formed XML. Neither fix has been
+confirmed by an actual green GitHub Actions run yet (this sandbox can't
+trigger or watch one) — that confirmation is still outstanding.
+
+---
 ## dynamic instance URL
 
 Not an `ARCHITECTURE.md` phase — all 20 phases above are the Android app
