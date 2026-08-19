@@ -1135,28 +1135,38 @@ and ffmpeg handles the rest at full capacity, not a limited/preview subset.
 
 **Files (actual):**
 - `app/build.gradle.kts` — adds ffmpeg-kit. **Read `FfmpegTranscoder`'s
-  `DEPENDENCY_NOTE` KDoc before touching this line.** Short version:
-  originally pinned `com.arthenica:ffmpeg-kit-full-gpl:6.0-2`; CI then
-  failed for real with `Could not find
-  com.arthenica:ffmpeg-kit-full-gpl:6.0-2` — Maven Central removed all
-  `com.arthenica:*` ffmpeg-kit binaries on 2025-04-01 following the
-  project's retirement, and this wasn't caught before that CI run.
-  **Fixed** by swapping to `com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1`
-  (sk3llo's actively-maintained fork, FFmpeg v8.1.1, releases through Jul
-  2026) after verifying two things directly rather than assuming: (1) its
-  POM's dual GPL-3.0/LGPL-3.0 licensing plus README confirm x264/x265 are
-  genuinely bundled — this is a true full-gpl variant, not a stripped
-  rebrand that would silently drop H.264 encode; (2) a real crash log from
-  that fork's own issue tracker
-  (sk3llo/ffmpeg_kit_flutter#71) shows the stack trace running through
-  `com.arthenica.ffmpegkit.*` classes, proving the fork kept the original
-  Java package and only republished under new Maven coordinates — so
-  `FfmpegTranscoder.kt`'s imports needed zero changes. If this version
-  ever stops resolving, check
-  central.sonatype.com/artifact/com.antonkarpenko/ffmpeg-kit-full-gpl for
-  a newer release before assuming the fork itself is dead. Building the
-  actively-maintained `FFmpegKitNext` from source remains the durable
-  long-term fix but needs Android NDK this sandbox doesn't have.
+  `DEPENDENCY_NOTE` KDoc before touching this line — it now documents two
+  real, different breaks, not one.** Short version: originally pinned
+  `com.arthenica:ffmpeg-kit-full-gpl:6.0-2`; CI failed with `Could not
+  find com.arthenica:ffmpeg-kit-full-gpl:6.0-2` — Maven Central removed
+  all `com.arthenica:*` ffmpeg-kit binaries on 2025-04-01 following the
+  project's retirement. First replacement attempt,
+  `com.antonkarpenko:ffmpeg-kit-full-gpl`, resolved fine but broke CI a
+  different way — `Unresolved reference: arthenica` on every FFmpegKit
+  class — because that coordinate is a **Flutter plugin build**
+  (`github.com/sk3llo/ffmpeg-kit-flutter`), not a plain Android library;
+  it doesn't expose the public Java API this app calls, and a same-named
+  class turning up in that fork's own crash log was not actually proof it
+  did (the verification that felt thorough checked the wrong thing).
+  **Now fixed** with
+  `io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7` —
+  `JamaisMagic/ffmpeg-kit-16KB`, a genuine from-source fork (its
+  `android/README.md` is the unmodified original arthenica Android docs —
+  confirmed real drop-in, zero import changes), rebuilt for Android's
+  16KB page-size requirement (unrelated to the retirement — a separate,
+  real Play Store requirement). `6.1.7` is a best-match version against
+  sibling artifacts in the same Maven group, not read directly off this
+  exact artifact's own page — if CI fails specifically on "could not
+  find" this coordinate (not an unresolved-reference compile error), bump
+  the version at
+  central.sonatype.com/artifact/io.github.jamaismagic.ffmpeg/ffmpeg-kit-lts-full-gpl-16kb
+  before assuming anything else is wrong. **Lesson for future sessions,
+  stated plainly**: when a fork/replacement package fails or is being
+  chosen, verify what the artifact is actually *built for* (plain Android
+  library vs. Flutter/React Native plugin wrapper vs. something else) —
+  matching class names in someone else's stack trace or issue tracker is
+  not the same thing as a matching public API surface, and checking the
+  wrong thing can look like real verification without being one.
 - `app/src/main/java/com/cobalt/android/transcode/TranscodeProfile.kt` —
   the quality ladder itself. `ALL_VIDEO`: 2160p/1440p/1080p/720p/480p/360p
   H.264 (CRF-based, not fixed-bitrate — see in-file KDoc for why), plus
