@@ -16,6 +16,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.os.bundleOf
 import androidx.core.view.WindowCompat
 import androidx.navigation.fragment.findNavController
+import androidx.navigation.ui.setupWithNavController
+import com.cobalt.android.databinding.ActivityMainBinding
 import com.cobalt.android.ui.DownloadQueueSheet
 import com.cobalt.android.ui.DownloadQueueViewModel
 import com.cobalt.android.ui.SettingsSheet

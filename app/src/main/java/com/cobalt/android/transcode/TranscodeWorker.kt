@@ -89,7 +89,20 @@ class TranscodeWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(
                 profile = profile,
                 totalDurationMs = durationMs
             ) { percent ->
-                repository.updateTranscodeProgress(outputRowId, percent.toLong())
+                // This lambda is FFmpegKit's own statistics-callback thread,
+                // not part of doWork()'s coroutine — onProgress is plain
+                // (Int) -> Unit (see FfmpegTranscoder.transcode, driven by
+                // FFmpegKit's own native callback, not a suspend context),
+                // so updateTranscodeProgress (a suspend Room DAO call) can't
+                // be called directly here. runBlocking is deliberate, not a
+                // shortcut: it keeps writes in the same order FFmpegKit
+                // emits them (matters for a percent value — a stray
+                // out-of-order write would show progress jumping backward),
+                // and only blocks FFmpegKit's own background thread, never
+                // the Worker's or the main thread.
+                kotlinx.coroutines.runBlocking {
+                    repository.updateTranscodeProgress(outputRowId, percent.toLong())
+                }
                 notificationHelper.updateProgress(outputRowId, percent, 100, label = "Converting…")
             }
 

@@ -1332,6 +1332,86 @@ the resulting file parses as well-formed XML. Neither fix has been
 confirmed by an actual green GitHub Actions run yet (this sandbox can't
 trigger or watch one) — that confirmation is still outstanding.
 
+### Round 2 — PR #40's Kotlin compile failures (Session 12)
+
+A later CI run (PR #40, triggered by Phase 20's FFmpeg feature landing)
+failed `:app:compileDebugKotlin` with a wall of errors across four
+unrelated files. This session's job was to sort out which were real,
+current bugs versus stale output from an earlier push in the same PR —
+**not** to assume every line in a pasted CI log is still true of `HEAD`.
+
+1. **`com.arthenica:ffmpeg-kit-full-gpl:6.0-2` genuinely gone** — already
+   fixed in `06c49e6` before this session started (see the earlier commit
+   message and the `app/build.gradle.kts`/`FfmpegTranscoder.kt` comments
+   it added). This session independently re-verified that fix's two load-
+   bearing claims via a live web search rather than trusting a prior
+   session's commit message at face value, since an LLM-authored claim
+   about an external package is exactly the kind of thing that can be
+   subtly wrong or fabricated:
+   - `com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1` is a real, currently-
+     published Maven Central artifact (confirmed against
+     `repo1.maven.org`'s actual directory listing).
+   - The fork does keep the original `com.arthenica.ffmpegkit.*` Java
+     package namespace (confirmed indirectly — a sibling fork in the same
+     lineage produces a real-world build error stack trace still running
+     through `com.arthenica.ffmpegkit.*` classes — forks in this family
+     preserve the namespace rather than rename hundreds of native/JNI
+     bindings). No further change needed here.
+
+2. **`MainActivity.kt`: missing imports for `ActivityMainBinding` and
+   `setupWithNavController`** — a real, current bug, unrelated to ffmpeg.
+   `viewBinding = true` is enabled and `activity_main.xml` exists, so
+   `ActivityMainBinding` genuinely gets generated; it just was never
+   imported. Same for the `androidx.navigation.ui.setupWithNavController`
+   extension (`navigation-ui-ktx` is a real dependency, also just not
+   imported). The knock-on "Variable expected" errors at the `binding.*`
+   call sites were a pure side effect of `binding`'s declared type being
+   unresolved — no separate fix needed there once the import landed.
+   **This bug has been in `MainActivity.kt` since one of the very first
+   commits in the project's history** (`git log` on the file shows no
+   change since `743ba46`, an early Phase-1-era commit) — it simply never
+   got caught because this PR's CI run is close to the *first* time a real
+   compiler has ever actually run against this codebase. Worth internalizing:
+   "not compiled, reviewed by eye only" has been true for the large
+   majority of this project's life, and this is direct proof it let a
+   trivial, immediately-fatal bug sit undetected for 20+ phases.
+
+3. **`QualityOptionAdapter.kt`: `DiffUtil.ItemCallback<TranscodeProfile?>`
+   overriding nothing** — `DiffUtil.ItemCallback<T>`'s abstract methods are
+   `@NonNull`-annotated in the AndroidX Java source, so with a nullable
+   type argument the actual signature Kotlin expects from an override is
+   the "definitely non-null type" `T & Any`, not `T?` — the original
+   `areItemsTheSame(a: TranscodeProfile?, b: TranscodeProfile?)` simply
+   didn't match the base class's real signature at all. Fixed by changing
+   the override parameters to `TranscodeProfile & Any`. **Verified this is
+   safe, not just a type-checker workaround**, before applying it: found a
+   real AndroidX `AsyncListDiffer` source mirror confirming its internal
+   wrapper only ever invokes the user's `ItemCallback` when *both* items
+   are non-null — it short-circuits null-vs-null and null-vs-non-null
+   comparisons itself first, which is also how `PagedListAdapter`'s
+   documented null-placeholder pattern works. So the callback genuinely
+   never receives a real `null` at runtime; the fix has zero behavior
+   change, purely a signature correction.
+4. **`TranscodeWorker.kt`: suspend call from a non-suspend callback** —
+   `FfmpegTranscoder.transcode()`'s `onProgress: (Int) -> Unit` parameter
+   is deliberately plain (it's invoked from FFmpegKit's own native
+   statistics-callback thread, not from any coroutine), but
+   `TranscodeWorker`'s implementation called
+   `repository.updateTranscodeProgress()` — a `suspend` Room DAO function —
+   directly from inside it. Fixed with `runBlocking` around just that one
+   call, not a fire-and-forget `launch{}`: progress percentages need to
+   land in the order FFmpegKit emits them (an out-of-order write would
+   show progress jumping backward), and `runBlocking` here only blocks
+   FFmpegKit's own background callback thread — never the Worker's
+   coroutine or the main thread — so it's the right tool for a genuinely
+   sequential, best-effort side-channel like this.
+
+**None of these four are cross-contaminated** — each has an independent
+root cause, confirmed by reading the actual current file rather than
+assuming a shared cause from their both appearing in one CI log. Still
+**not confirmed by an actual green GitHub Actions run** — same standing
+caveat as Round 1; this sandbox has no way to trigger or watch one.
+
 ---
 ## dynamic instance URL
 
