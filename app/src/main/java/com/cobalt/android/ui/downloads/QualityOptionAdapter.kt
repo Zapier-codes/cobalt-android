@@ -41,22 +41,36 @@ class QualityOptionAdapter(
 
     companion object {
         // DiffUtil.ItemCallback<T>'s abstract methods are @NonNull-annotated
-        // in the AndroidX Java source, so with T = TranscodeProfile? the
-        // actual override signature Kotlin expects is the "definitely
-        // non-null type" `TranscodeProfile & Any`, not `TranscodeProfile?`
-        // — plain `TranscodeProfile?` params don't match the base class's
-        // signature at all (hence the original "overrides nothing" compile
-        // errors). Safe, not just a type-checker workaround: AsyncListDiffer
-        // never actually invokes this callback with a null item — its
-        // internal wrapper short-circuits null-vs-null (same) and
-        // null-vs-non-null (different) itself before delegating, precisely
-        // so nullable T can mean "loading placeholder" (the same pattern
-        // androidx.paging's PagedListAdapter documents) without the
-        // ItemCallback ever seeing a real null.
+        // in the AndroidX Java source. The correct Kotlin override for a
+        // nullable type argument (T = TranscodeProfile?) is simply the
+        // plain non-null class type (TranscodeProfile) as the parameter
+        // type — Kotlin/Java interop honors the Java-side @NonNull
+        // annotation on T here regardless of T's own nullable upper bound
+        // at the call site, and this correctly overrides the Java method.
+        //
+        // (Corrected this session — a previous attempt at this used
+        // `TranscodeProfile & Any` "definitely non-null type" syntax,
+        // which does NOT apply here: that syntax is only valid when the
+        // left-hand side is an actual generic type PARAMETER with a
+        // nullable bound declared in the enclosing generic scope, e.g.
+        // `class Foo<T> where T : Any?  { fun bar(x: T & Any) }`.
+        // TranscodeProfile is a concrete class name, not a type
+        // parameter, in this anonymous `object : DiffUtil.ItemCallback<
+        // TranscodeProfile?>()` — there's no T in scope for `&` to apply
+        // to, hence the real compiler error.)
+        //
+        // Safe regardless: AsyncListDiffer never actually invokes this
+        // callback with a null item — its internal wrapper short-circuits
+        // null-vs-null (same) and null-vs-non-null (different) itself
+        // before delegating, precisely so nullable T can mean "loading
+        // placeholder" (the same pattern androidx.paging's
+        // PagedListAdapter documents) without the ItemCallback ever
+        // seeing a real null.
         val DIFF = object : DiffUtil.ItemCallback<TranscodeProfile?>() {
-            override fun areItemsTheSame(a: TranscodeProfile & Any, b: TranscodeProfile & Any) =
-                a.id == b.id
-            override fun areContentsTheSame(a: TranscodeProfile & Any, b: TranscodeProfile & Any) = a == b
+            override fun areItemsTheSame(oldItem: TranscodeProfile, newItem: TranscodeProfile) =
+                oldItem.id == newItem.id
+            override fun areContentsTheSame(oldItem: TranscodeProfile, newItem: TranscodeProfile) =
+                oldItem == newItem
         }
     }
 }

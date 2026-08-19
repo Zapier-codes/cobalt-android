@@ -104,7 +104,24 @@ dependencies {
     // the ORIGINAL Java package namespace and only republished under new
     // Maven coordinates, so this is a true drop-in swap: zero import
     // changes needed anywhere in this codebase.
-    implementation("com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1")
+    implementation("com.antonkarpenko:ffmpeg-kit-full-gpl:2.1.0")
+
+    // Version note (found and fixed this session, replacing a bad
+    // 2.2.1 pin): 2.2.1 is a REAL version, but only for the plain
+    // `ffmpeg-kit-full` artifact (non-GPL) — this fork versions its
+    // `-gpl` variant independently and it lags behind. Confirmed
+    // directly against Maven Central's own repository index
+    // (repo1.maven.org/maven2/com/antonkarpenko/ffmpeg-kit-full-gpl/),
+    // which lists exactly 1.0.0, 1.0.1, 1.1.0, 2.0.0, 2.0.1, 2.1.0 —
+    // no 2.2.1. A nonexistent-version pin is a real "could not
+    // resolve" bug, not something a stale CI cache changes — if this
+    // ever LOOKS like it partially works in a CI log (e.g. native .so
+    // files appearing to package successfully) despite a bad pin,
+    // suspect .github/workflows/build.yml's `restore-keys` PREFIX
+    // fallback serving leftover artifacts from a previous, different
+    // dependency declaration, not evidence this pin is actually valid.
+    // Always verify the exact version against Maven Central's own
+    // index, not against what a CI log's task list appears to reach.
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
