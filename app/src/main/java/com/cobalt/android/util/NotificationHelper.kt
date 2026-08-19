@@ -40,10 +40,10 @@ class NotificationHelper(private val context: Context) {
             .setSilent(true)
             .build()
 
-    fun updateProgress(recordId: Long, bytes: Int, total: Int) {
+    fun updateProgress(recordId: Long, bytes: Int, total: Int, label: String = "Downloading…") {
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Downloading…")
+            .setContentTitle(label)
             .setProgress(total.coerceAtLeast(1), bytes, total <= 0)
             .setOngoing(true)
             .setSilent(true)

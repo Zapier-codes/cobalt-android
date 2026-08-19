@@ -8,7 +8,6 @@ import android.view.ViewGroup
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.cobalt.android.databinding.SheetResolutionPickerBinding
-import com.cobalt.android.download.DownloadService
 import com.cobalt.android.link.LinkResolverRepository
 import com.cobalt.android.ui.home.HomeViewModel
 import com.cobalt.android.util.SettingsRepository
@@ -22,11 +21,15 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
  * there's no need to make `ResolvedFormat` Parcelable for what is always a
  * same-process, same-activity hand-off.
  *
- * Confirming a format reuses `DownloadService.startHttps(...)` — the exact
- * same call `ShortsViewModel.downloadToDevice()` already drives for the
- * Shorts "save" action — so both paths converge on one download engine,
- * not two (see ARCHITECTURE.md "Unified enhancement, NOT a parallel
- * rebuild").
+ * Confirming a format hands off to `QualitySelectionSheet` (Phase 15),
+ * which is what actually calls `DownloadService.startHttps(...)` — the
+ * exact same call `ShortsViewModel.downloadToDevice()` already drives for
+ * the Shorts "save" action — so both paths still converge on one download
+ * engine, not two (see ARCHITECTURE.md "Unified enhancement, NOT a
+ * parallel rebuild"). Shorts' save action (`ShortsViewModel.downloadToDevice`)
+ * calls `startHttps` directly and skips the quality sheet entirely — a
+ * deliberate scope boundary for this phase, not an oversight; wiring
+ * FFmpeg quality selection into the Shorts feed is future work.
  *
  * Phase 14: honors `SettingsRepository.defaultDownloadFormat`. Since this
  * app's `ResolvedFormat.label` is a format *type* ("video"/"audio"/"photo
@@ -95,16 +98,28 @@ class ResolutionPickerDialog : BottomSheetDialogFragment() {
         adapter.submitList(orderedFormats)
     }
 
+    // Phase 15: this no longer starts the download itself — it hands the
+    // chosen source format to QualitySelectionSheet, which is what
+    // actually calls DownloadService.startHttps() (with or without a
+    // TranscodeProfile attached) once the user also picks a target
+    // quality/format. Name kept as-is even though its job changed, since
+    // every call site below is still "the user confirmed a format, close
+    // this dialog" — same trigger, new next step.
     private fun downloadAndClose(format: LinkResolverRepository.ResolvedFormat, originalUrl: String) {
-        DownloadService.startHttps(
-            ctx = requireContext().applicationContext,
-            cobaltUrl = format.url,
+        // parentFragmentManager, not childFragmentManager: this dialog is
+        // about to dismiss() itself below, which tears down its own
+        // childFragmentManager (and anything shown through it) along with
+        // it. Showing the next sheet as a sibling through the *parent's*
+        // manager (the same one HomeFragment used to show this dialog in
+        // the first place) is what lets it survive this dialog's own
+        // dismissal.
+        QualitySelectionSheet.newInstance(
+            url = format.url,
             filename = format.filename,
             mimeType = format.mimeType,
-            cookies = "",
-            userAgent = "",
+            label = format.label,
             originalUrl = originalUrl
-        )
+        ).show(parentFragmentManager, QualitySelectionSheet.TAG)
         viewModel.clearResolveResult()
         dismiss()
     }

@@ -24,6 +24,13 @@ class DownloadRepository(context: Context) {
     suspend fun updateProgress(id: Long, bytes: Long, total: Long) =
         dao.updateProgress(id, bytes, total, DownloadStatus.DOWNLOADING)
 
+    // Phase 20: same shape as updateProgress above (reuses bytes/total as
+    // a 0..100 percent — see TranscodeWorker's KDoc), but keeps the row in
+    // CONVERTING rather than clobbering it back to DOWNLOADING, which is
+    // what calling the plain updateProgress() above would silently do.
+    suspend fun updateTranscodeProgress(id: Long, percent: Long) =
+        dao.updateProgress(id, percent, 100L, DownloadStatus.CONVERTING)
+
     suspend fun updateMediaStoreUri(id: Long, uri: String) =
         dao.updateMediaStoreUri(id, uri)
 

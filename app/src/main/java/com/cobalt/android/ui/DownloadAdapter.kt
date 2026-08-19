@@ -26,7 +26,11 @@ class DownloadAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val record = getItem(position)
         with(holder.binding) {
-            tvFilename.text = record.filename.ifBlank { "downloading…" }
+            tvFilename.text = record.filename.ifBlank { "downloading…" } +
+                // Phase 20: label a transcode-output row with the quality
+                // it targets, so it reads distinctly from the raw
+                // download it was produced from in the same queue list.
+                if (record.transcodeProfileLabel.isNotBlank()) " · ${record.transcodeProfileLabel}" else ""
 
             // Reset all action buttons first
             btnOpen.visibility = View.GONE
@@ -57,6 +61,20 @@ class DownloadAdapter(
                     progressBar.progress = pct
                     btnCancel.visibility = View.VISIBLE
                     btnCancel.setOnClickListener { onCancel(record) }
+                }
+                DownloadStatus.CONVERTING -> {
+                    val pct = if (record.totalBytes > 0)
+                        (record.bytesDownloaded * 100 / record.totalBytes).toInt() else 0
+                    tvStatus.text = if (record.totalBytes > 0) "converting… $pct%" else "converting…"
+                    progressBar.visibility = View.VISIBLE
+                    progressBar.isIndeterminate = record.totalBytes <= 0
+                    progressBar.progress = pct
+                    // No cancel button: FFmpegKit sessions aren't wired to
+                    // DownloadQueueSheet's onCancel path this phase (that
+                    // path currently only knows how to stop DownloadService
+                    // HTTP transfers) — cancelling an in-flight transcode
+                    // is left for a later phase rather than shown as a
+                    // button that silently does nothing.
                 }
                 DownloadStatus.COMPLETE -> {
                     val mb = if (record.totalBytes > 0) "%.1f MB · ".format(record.totalBytes / 1_048_576.0) else ""

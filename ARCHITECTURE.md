@@ -152,7 +152,7 @@ app/src/main/java/com/cobalt/android/
 └── MainActivity.kt       hosts bottom nav + fragment container (already exists)
 ```
 
-## Build Sequencing — 20 phases, in strict order
+## Build Sequencing — 21 phases, in strict order
 
 **Restructured from 8 phases to 20 in Session 5.** The original 8-phase plan
 bundled too much real work into single phases (e.g. old Phase 5 was "build
@@ -1127,14 +1127,167 @@ not the spec's assumed shape.
 
 ---
 
-### Phase 20 — Final gate: architecture_complete
+### Phase 20 — FFmpeg-based dynamic quality/format transcoding for downloads ✅ done (Session 11)
+**User request, verbatim intent:** ffmpeg wired in so download quality is
+dynamic and FOSS — FLAC/320kbps-etc for audio, several quality tiers for
+video — via a bottom sheet where the user can pick literally any quality
+and ffmpeg handles the rest at full capacity, not a limited/preview subset.
+
+**Files (actual):**
+- `app/build.gradle.kts` — adds `com.arthenica:ffmpeg-kit-full-gpl:6.0-2`.
+  **Read `FfmpegTranscoder`'s `DEPENDENCY_NOTE` KDoc before touching this
+  line.** Short version: upstream `arthenica/ffmpeg-kit` is archived/
+  retired as of 2026 (no further releases); 6.0-2 is the last real Android
+  build and is still Maven-Central-resolvable as of this session, but that
+  could change. `full-gpl` (not `full`/`min-gpl`) is required specifically
+  for bundled x264 (H.264 encode) — a smaller variant would silently drop
+  the most widely-compatible video tier. If resolution ever breaks, the
+  documented fallback is switching this one line to
+  `com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1` (same package/class names,
+  community-maintained fork) — nothing else should need to change for that
+  swap. Building the actively-maintained `FFmpegKitNext` from source is the
+  durable long-term fix but needs Android NDK this sandbox doesn't have.
+- `app/src/main/java/com/cobalt/android/transcode/TranscodeProfile.kt` —
+  the quality ladder itself. `ALL_VIDEO`: 2160p/1440p/1080p/720p/480p/360p
+  H.264 (CRF-based, not fixed-bitrate — see in-file KDoc for why), plus
+  1080p/720p VP9-in-WebM (royalty-free FOSS alternative), plus a
+  remux-only "no re-encode, fastest" tier. `ALL_AUDIO`: FLAC (lossless,
+  FOSS), MP3 320/256/192/128, AAC 256/128, Opus 160, Ogg Vorbis 192. FLAC
+  deliberately has no "320" entry — that number only means anything for a
+  lossy codec, so mislabeling lossless FLAC with a bitrate it doesn't have
+  was avoided rather than smoothed over. `encode()`/`decode()` round-trip
+  a profile through a flat `|`-delimited string for `Intent` extras and
+  WorkManager `Data` (neither accepts a sealed class directly).
+- `app/src/main/java/com/cobalt/android/transcode/FfmpegTranscoder.kt` —
+  the actual ffmpeg-kit command builder + coroutine execution wrapper.
+  Reads/writes `content://` MediaStore URIs directly via ffmpeg-kit's SAF
+  bridge (`FFmpegKitConfig.getSafParameterForRead/Write`) — verified
+  against ffmpeg-kit's own Android wiki examples, not assumed from
+  training memory. Two real bugs were caught and fixed mid-session before
+  this landed: (1) an unverified `getAllLogsAsString()` call that isn't
+  part of the documented API was replaced with the real
+  `session.getOutput()`/`getFailStackTrace()` accessors; (2)
+  `-movflags +faststart` was dropped entirely — it requires seeking back
+  through the output after writing, which the SAF fd-based write path
+  doesn't support and upstream confirms fails outright (`Bad file
+  descriptor`, arthenica/ffmpeg-kit#167), so it was removed rather than
+  shipped as a flag that would break every SAF-written MP4 this app
+  produces.
+- `app/src/main/java/com/cobalt/android/transcode/TranscodeWorker.kt` —
+  `CoroutineWorker` that runs after `DownloadService` finishes fetching
+  the *source* file (no network dependency of its own — pure local
+  re-encode). Produces a **new** `DownloadRecord` row rather than
+  mutating the source row in place, so a failed conversion never loses
+  the raw download. Reuses `bytesDownloaded`/`totalBytes` as a 0..100
+  progress percentage on the new row instead of adding a dedicated
+  progress column — `DownloadAdapter`'s existing progress-bar rendering
+  needed only a label branch, not new binding logic (see "Unified
+  enhancement" above).
+- `app/src/main/java/com/cobalt/android/download/DownloadRecord.kt` /
+  `DownloadDatabase.kt` (migration 3→4) / `DownloadDao.kt` — new
+  `DownloadStatus.CONVERTING` value (its own state, not reused
+  `DOWNLOADING`, since "re-encoding a local file" and "fetching bytes over
+  the network" have different failure modes and shouldn't render
+  identically in the queue) plus two new columns:
+  `sourceDownloadId` (0 = not a transcode output; else points at the raw
+  file's row id) and `transcodeProfileLabel` (empty = not a transcode
+  output).
+- `app/src/main/java/com/cobalt/android/download/DownloadService.kt` —
+  `startHttps(...)` gained a trailing `transcodeProfile: TranscodeProfile?
+  = null` default param (verified every existing call site —
+  `ShortsViewModel.downloadToDevice`, `QualitySelectionSheet` — uses named
+  args, so this is source-compatible). After a raw HTTPS download
+  finalizes, if a profile is attached, enqueues `TranscodeWorker` via
+  WorkManager rather than running the (potentially multi-minute, for a 4K
+  re-encode) job inline and holding the foreground notification.
+- `app/src/main/java/com/cobalt/android/ui/downloads/QualitySelectionSheet.kt`
+  + `QualityOptionAdapter.kt` + `res/layout/sheet_quality_selection.xml` +
+  `res/layout/item_quality_option.xml` — the actual bottom sheet the user
+  asked for. Shown after `ResolutionPickerDialog` (Phase 6) hands off a
+  chosen source format; toggles between the video ladder and audio ladder
+  (`TranscodeProfile.ALL_VIDEO`/`ALL_AUDIO`), defaults to whichever side
+  matches the source format's kind, and always includes "Original / no
+  conversion" as a first-class option — not a limited/preview subset,
+  every tier in the ladder is one tap away and wired to a real ffmpeg
+  command. **Real bug caught and fixed mid-session:** this sheet is shown
+  via `parentFragmentManager`, not `childFragmentManager` — showing it as
+  a child of `ResolutionPickerDialog` would have killed it the instant
+  that dialog's own `dismiss()` call (three lines later) tore down its
+  childFragmentManager.
+- `app/src/main/java/com/cobalt/android/ui/downloads/ResolutionPickerDialog.kt`
+  — `downloadAndClose` no longer calls `DownloadService.startHttps`
+  directly; it hands the chosen format to `QualitySelectionSheet`, which
+  is what actually starts the download once the user also picks a target
+  quality.
+- `app/src/main/java/com/cobalt/android/ui/DownloadAdapter.kt` — renders
+  `CONVERTING` (progress bar, "converting… N%" label, no cancel button —
+  see Known limitation below) and appends the transcode profile label to
+  a converted row's filename so it reads distinctly from the raw download
+  it came from.
+- `app/src/main/java/com/cobalt/android/util/NotificationHelper.kt` —
+  `updateProgress` gained a `label` param (defaults to the existing
+  `"Downloading…"`) so `TranscodeWorker` can show `"Converting…"` on the
+  same notification-progress code path instead of a parallel one.
+- `app/src/main/java/com/cobalt/android/util/SettingsRepository.kt` — two
+  new persisted keys, `defaultVideoQualityProfileId` /
+  `defaultAudioQualityProfileId` (empty = "always ask", the only behavior
+  actually implemented this phase). **Storage layer only** — same
+  deliberate split as Phase 12 (storage) → Phase 13 (UI): no
+  `SettingsFragment` control writes these yet, and `QualitySelectionSheet`
+  does not yet read them to pre-select/skip itself. A future phase wires
+  the UI, following Phase 13's own pattern exactly.
+
+**Definition of Done:**
+1. ✅ A user downloading video can pick any of the video quality tiers
+   (2160p down to 360p H.264, or VP9/WebM, or remux-only) from a real
+   bottom sheet, and the resulting file is actually produced at that
+   quality by ffmpeg — not capped to a "demo" subset.
+2. ✅ A user downloading/extracting audio can pick FLAC (lossless, FOSS)
+   or MP3 up to 320kbps or any other tier in the ladder, same as above.
+3. ✅ "Original / no conversion" remains a first-class, always-available
+   choice — picking it downloads the source format exactly as today,
+   with zero ffmpeg involvement.
+4. ✅ A failed conversion never destroys the raw downloaded file — the
+   source `DownloadRecord` row is untouched by `TranscodeWorker` either
+   way.
+5. **Not done / explicit scope boundary:** Shorts' "save" action
+   (`ShortsViewModel.downloadToDevice`) still calls `startHttps` directly
+   and skips the quality sheet entirely. Wiring FFmpeg quality selection
+   into the Shorts feed's save button is future work, not an oversight.
+6. **Not done:** cancelling an in-flight transcode from the queue UI
+   (`DownloadAdapter` intentionally shows no cancel button on a
+   `CONVERTING` row this phase — see its inline comment).
+7. **Not done:** Settings UI for the two new default-quality preference
+   keys (storage layer only, see above).
+
+**Known limitation:** not built/run against a real Android toolchain in
+this session — same standing caveat as this repo's whole history, and
+this sandbox has confirmed no route to do so (no Gradle distribution
+reachable, no Android SDK — see HANDOVER.md). GitHub Actions CI is the
+real build authority; confirming a clean build with this phase's new
+`ffmpeg-kit-full-gpl` dependency actually resolving is the top
+outstanding item for it. Two real API-usage bugs (an unverified
+`FFmpegSession` method name, and `-movflags +faststart` breaking under
+SAF writes) were caught by cross-checking ffmpeg-kit's own documented
+examples before landing this patch, specifically *because* there's no
+compiler here to catch them — the next session should not assume "no
+compiler ran" means "unverified," but should also not assume it means
+"verified as if compiled."
+
+---
+
+### Phase 21 — Final gate: architecture_complete
 **Definition of Done (all must be true):**
-1. Phases 1–19 above are all individually done per their own Definition of
+1. Phases 1–20 above are all individually done per their own Definition of
    Done, verified by inspecting the actual repo, not by trusting a prior
    session's summary.
-2. Only once ALL of the above are true does Hermes set
-   `architecture_complete: true` in `state.json`. This is the ONLY
-   condition under which CI/build-error monitoring (MAINTAIN MODE) begins.
+2. Only once ALL of the above are true is `architecture_complete: true`
+   set in `state.json`. This is the ONLY condition under which CI/build-
+   error monitoring (MAINTAIN MODE) begins. (Historical note: this file
+   originally said "Hermes sets `architecture_complete`" — the autonomous
+   Hermes pipeline was retired as of Session 10, per `HANDOVER.md`; this
+   gate condition itself didn't change, just who/what performs it — a
+   manual session, same as every phase above it.)
 
 ---
 

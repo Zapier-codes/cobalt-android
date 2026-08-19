@@ -72,6 +72,19 @@ dependencies {
     // transitive dependencies, both pulled automatically from its POM.
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.24.6")
 
+    // --- Phase 15 (FFmpeg-based dynamic quality/format transcoding) ---
+    // `full-gpl` (not `full` or `min-gpl`) is the only prebuilt ffmpeg-kit
+    // variant that bundles x264/x265 (H.264/H.265 encode — needed for
+    // TranscodeProfile.ALL_VIDEO's MP4 tiers) alongside lame/opus/vorbis/
+    // flac (all already free of GPL entanglement on their own, bundled
+    // here anyway since full-gpl is a superset). Picking a smaller variant
+    // would silently drop the H.264 video tiers, which are the ones most
+    // players actually support — see FfmpegTranscoder's DEPENDENCY_NOTE
+    // KDoc for why this specific artifact/version is pinned, the real risk
+    // that Maven Central stops serving it (ffmpeg-kit is archived/retired
+    // upstream as of 2026), and the fallback fork to switch to if it does.
+    implementation("com.arthenica:ffmpeg-kit-full-gpl:6.0-2")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")

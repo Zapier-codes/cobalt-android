@@ -39,6 +39,11 @@
     <string name="resolution_picker_title">choose a format</string>
     <string name="settings_cobalt_api_key">Cobalt API key (optional)</string>
     <string name="settings_cobalt_api_key_hint">Api-Key value from your instance owner</string>
+    <!-- FFmpeg quality/format transcoding -->
+    <string name="quality_picker_title">choose quality</string>
+    <string name="quality_kind_video">Video</string>
+    <string name="quality_kind_audio">Audio</string>
+    <string name="quality_option_original">Original (no conversion)</string>
     <string name="settings_default_format">default format</string>
     <string name="settings_format_ask">ask</string>
     <string name="settings_format_video">video</string>

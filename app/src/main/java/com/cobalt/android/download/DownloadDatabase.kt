@@ -27,7 +27,7 @@ import com.cobalt.android.db.entities.ResolutionCacheEntity
         HistoryEntity::class,
         LikedEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(StatusConverters::class)
@@ -76,13 +76,29 @@ abstract class DownloadDatabase : RoomDatabase() {
             }
         }
 
+        // Phase 20: adds the two columns TranscodeWorker/DownloadAdapter
+        // need to tell a transcode-output row apart from a plain download
+        // (see DownloadRecord's KDoc on sourceDownloadId/
+        // transcodeProfileLabel) plus the CONVERTING status value added to
+        // DownloadStatus — CONVERTING needs no schema change of its own
+        // since `status` is already stored as its enum-name TEXT via
+        // StatusConverters, but existing FAILED_NETWORK-style default
+        // values below still need real defaults so pre-Phase-15 rows
+        // backfill cleanly instead of ending up NULL.
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE downloads ADD COLUMN sourceDownloadId INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE downloads ADD COLUMN transcodeProfileLabel TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): DownloadDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     DownloadDatabase::class.java,
                     "cobalt_downloads.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { INSTANCE = it }
             }
     }
 }

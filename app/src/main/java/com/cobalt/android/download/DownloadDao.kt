@@ -23,7 +23,11 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads ORDER BY timestamp DESC")
     fun getAllLive(): LiveData<List<DownloadRecord>>
 
-    @Query("SELECT * FROM downloads WHERE status IN ('QUEUED','DOWNLOADING','FAILED_NETWORK') ORDER BY timestamp DESC")
+    // Phase 20: CONVERTING added alongside the existing three so a
+    // transcode-output row shows up in the same "active" queue surface
+    // (DownloadQueueSheet) a normal in-progress download does, instead of
+    // silently disappearing from the queue while ffmpeg runs.
+    @Query("SELECT * FROM downloads WHERE status IN ('QUEUED','DOWNLOADING','CONVERTING','FAILED_NETWORK') ORDER BY timestamp DESC")
     fun getActiveLive(): LiveData<List<DownloadRecord>>
 
     @Query("SELECT * FROM downloads WHERE id = :id")

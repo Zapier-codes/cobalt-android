@@ -10,6 +10,8 @@ import android.util.Log
 import com.cobalt.android.db.HistoryRepository
 import com.cobalt.android.db.entities.HistoryEntity
 import com.cobalt.android.db.entities.HistoryItemType
+import com.cobalt.android.transcode.TranscodeProfile
+import com.cobalt.android.transcode.TranscodeWorker
 import com.cobalt.android.util.NotificationHelper
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
@@ -61,9 +63,16 @@ class DownloadService : Service() {
                     cookies = intent.getStringExtra(EXTRA_COOKIES) ?: "",
                     userAgent = intent.getStringExtra(EXTRA_USER_AGENT) ?: ""
                 )
+                // Phase 20: not persisted on `record` itself — a transcode
+                // target describes what should happen *after* this raw
+                // download finishes, not a property of the raw file being
+                // fetched, so it only lives in this closure (and then on
+                // the separate output row TranscodeWorker inserts).
+                val transcodeProfile = intent.getStringExtra(EXTRA_TRANSCODE_PROFILE)
+                    ?.let { TranscodeProfile.decode(it) }
                 scope.launch {
                     val id = repository.insert(record)
-                    processHttps(record.copy(id = id))
+                    processHttps(record.copy(id = id), transcodeProfile)
                 }
             }
             ACTION_BLOB -> {
@@ -84,7 +93,7 @@ class DownloadService : Service() {
         return START_NOT_STICKY
     }
 
-    private suspend fun processHttps(record: DownloadRecord) {
+    private suspend fun processHttps(record: DownloadRecord, transcodeProfile: TranscodeProfile? = null) {
         activeCount.incrementAndGet()
         try {
             repository.updateStatus(record.id, DownloadStatus.DOWNLOADING)
@@ -127,6 +136,22 @@ class DownloadService : Service() {
                     repository.updateStatus(record.id, DownloadStatus.COMPLETE)
                     recordDownloadHistory(record)
                     notificationHelper.showComplete(record.id, record.filename, opened.uri, record.mimeType)
+                    // Phase 20: the raw file is on disk and MediaStore-
+                    // finalized — hand off to TranscodeWorker if the user
+                    // picked a target quality/format other than "Original".
+                    // This is a genuinely separate, potentially long-
+                    // running (minutes for a 4K re-encode) job, so it goes
+                    // through WorkManager rather than staying inline here
+                    // and holding this Service's activeCount/foreground
+                    // notification the whole time — same reasoning
+                    // RetryDownloadWorker already uses WorkManager instead
+                    // of retrying inline.
+                    if (transcodeProfile != null) {
+                        TranscodeWorker.enqueue(
+                            applicationContext, sourceRecordId = record.id,
+                            sourceUri = opened.uri, profile = transcodeProfile
+                        )
+                    }
                 } catch (e: Exception) {
                     mediaStoreWriter.delete(opened.uri)
                     throw e
@@ -235,10 +260,16 @@ class DownloadService : Service() {
         const val EXTRA_COOKIES = "cookies"
         const val EXTRA_USER_AGENT = "userAgent"
         const val EXTRA_TEMP_PATH = "tempPath"
+        // Phase 20: TranscodeProfile.encode()'d string, or absent entirely
+        // for "download as-is, no conversion" — the overload below without
+        // a `transcodeProfile` parameter is what every pre-Phase-15 call
+        // site keeps using unchanged.
+        const val EXTRA_TRANSCODE_PROFILE = "transcodeProfile"
 
         fun startHttps(
             ctx: Context, cobaltUrl: String, filename: String,
-            mimeType: String, cookies: String, userAgent: String, originalUrl: String
+            mimeType: String, cookies: String, userAgent: String, originalUrl: String,
+            transcodeProfile: TranscodeProfile? = null
         ) {
             ctx.startForegroundService(Intent(ctx, DownloadService::class.java).apply {
                 action = ACTION_HTTPS
@@ -248,6 +279,7 @@ class DownloadService : Service() {
                 putExtra(EXTRA_MIME_TYPE, mimeType)
                 putExtra(EXTRA_COOKIES, cookies)
                 putExtra(EXTRA_USER_AGENT, userAgent)
+                transcodeProfile?.let { putExtra(EXTRA_TRANSCODE_PROFILE, it.encode()) }
             })
         }
 

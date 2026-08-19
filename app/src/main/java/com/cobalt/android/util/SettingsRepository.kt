@@ -148,6 +148,27 @@ class SettingsRepository(context: Context) {
             prefs.edit().putString("custom_shorts_queries", cleaned.joinToString("\n")).apply()
         }
 
+    /**
+     * Phase 20: persisted last-picked (or explicitly set once Settings UI
+     * exists) [com.cobalt.android.transcode.TranscodeProfile.id], or empty
+     * for "always ask" (the current, only-implemented behavior —
+     * `QualitySelectionSheet` always shows the full sheet this phase; it
+     * does not yet read these keys to skip itself the way
+     * `ResolutionPickerDialog` skips itself for [defaultDownloadFormat]).
+     * Storage layer only, same split as Phase 12 (storage) preceding
+     * Phase 13 (UI) — no `SettingsFragment` control writes these yet.
+     * Empty string, not null, is the "ask" sentinel so `getString`'s
+     * non-null default keeps these two properties non-nullable `String`
+     * rather than `String?`, consistent with every other key above.
+     */
+    var defaultVideoQualityProfileId: String
+        get() = prefs.getString("default_video_quality_profile_id", "") ?: ""
+        set(v) { prefs.edit().putString("default_video_quality_profile_id", v).apply() }
+
+    var defaultAudioQualityProfileId: String
+        get() = prefs.getString("default_audio_quality_profile_id", "") ?: ""
+        set(v) { prefs.edit().putString("default_audio_quality_profile_id", v).apply() }
+
     companion object {
         const val DEFAULT_DOWNLOAD_LOCATION = "Download/Cobalt"
     }
