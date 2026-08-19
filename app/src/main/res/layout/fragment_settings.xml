@@ -1,208 +1,206 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
-    <androidx.core.widget.NestedScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/cobalt_background">
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/cobalt_background">
 
-        <LinearLayout
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Phase 12/13: default format preference. "Resolution" in the
+             spec's wording; see SettingsRepository.DownloadFormatPreference
+             KDoc for why this is a format-type choice, not a quality tier. -->
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:text="@string/settings_default_format"
+            android:textColor="@color/cobalt_text_secondary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="11sp"
+            android:layout_marginBottom="8dp" />
 
-            <!-- Phase 12/13: default format preference. "Resolution" in the
-                 spec's wording; see SettingsRepository.DownloadFormatPreference
-                 KDoc for why this is a format-type choice, not a quality tier. -->
-            <TextView
-                android:layout_width="match_parent"
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/toggleDefaultFormat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFormatAsk"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="@string/settings_default_format"
-                android:textColor="@color/cobalt_text_secondary"
-                android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="11sp"
-                android:layout_marginBottom="8dp" />
-
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleDefaultFormat"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:singleSelection="true"
-                app:selectionRequired="true">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnFormatAsk"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/settings_format_ask"
-                    android:textColor="@color/cobalt_text_primary"
-                    android:fontFamily="@font/ibm_plex_mono_regular"
-                    app:strokeColor="@color/cobalt_input_border" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnFormatVideo"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/settings_format_video"
-                    android:textColor="@color/cobalt_text_primary"
-                    android:fontFamily="@font/ibm_plex_mono_regular"
-                    app:strokeColor="@color/cobalt_input_border" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnFormatAudio"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/settings_format_audio"
-                    android:textColor="@color/cobalt_text_primary"
-                    android:fontFamily="@font/ibm_plex_mono_regular"
-                    app:strokeColor="@color/cobalt_input_border" />
-
-            </com.google.android.material.button.MaterialButtonToggleGroup>
-
-            <!-- Phase 12: download location. Not wired into MediaStoreWriter
-                 yet — persisted only, per Phase 12's DoD. -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_download_location"
-                android:textColor="@color/cobalt_text_secondary"
-                android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="11sp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="4dp" />
-
-            <EditText
-                android:id="@+id/etDownloadLocation"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="text"
+                android:layout_weight="1"
+                android:text="@string/settings_format_ask"
                 android:textColor="@color/cobalt_text_primary"
                 android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="13sp"
-                android:background="@color/cobalt_surface_elevated"
-                android:padding="10dp" />
+                app:strokeColor="@color/cobalt_input_border" />
 
-            <!-- Phase 13: theme. DYNAMIC is the only option that visibly
-                 differs on this app's current single hardcoded dark palette
-                 — see ThemeMode KDoc / ARCHITECTURE.md Phase 13 for why
-                 LIGHT and DARK look the same today. -->
-            <TextView
-                android:layout_width="match_parent"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFormatVideo"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="@string/settings_theme"
-                android:textColor="@color/cobalt_text_secondary"
-                android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="11sp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="8dp" />
-
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleTheme"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:singleSelection="true"
-                app:selectionRequired="true">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnThemeLight"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/settings_theme_light"
-                    android:textColor="@color/cobalt_text_primary"
-                    android:fontFamily="@font/ibm_plex_mono_regular"
-                    app:strokeColor="@color/cobalt_input_border" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnThemeDark"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/settings_theme_dark"
-                    android:textColor="@color/cobalt_text_primary"
-                    android:fontFamily="@font/ibm_plex_mono_regular"
-                    app:strokeColor="@color/cobalt_input_border" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnThemeDynamic"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/settings_theme_dynamic"
-                    android:textColor="@color/cobalt_text_primary"
-                    android:fontFamily="@font/ibm_plex_mono_regular"
-                    app:strokeColor="@color/cobalt_input_border" />
-
-            </com.google.android.material.button.MaterialButtonToggleGroup>
-
-            <!-- Phase 14: Invidious instance pool. Default (shown as hint,
-                 not pre-filled text) is InvidiousShortsSource.DEFAULT_INSTANCES
-                 — leaving this blank keeps that shipped default. -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_invidious_instances"
-                android:textColor="@color/cobalt_text_secondary"
-                android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="11sp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="4dp" />
-
-            <EditText
-                android:id="@+id/etInvidiousInstances"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minLines="2"
-                android:gravity="top"
-                android:inputType="textMultiLine|textUri"
-                android:hint="@string/settings_invidious_instances_hint"
+                android:layout_weight="1"
+                android:text="@string/settings_format_video"
                 android:textColor="@color/cobalt_text_primary"
-                android:textColorHint="@color/cobalt_text_secondary"
                 android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="13sp"
-                android:background="@color/cobalt_surface_elevated"
-                android:padding="10dp" />
+                app:strokeColor="@color/cobalt_input_border" />
 
-            <!-- Phase 14 (optional half of the spec): editable Shorts
-                 search-term pool, feeding ShortsQueryFeeder. Blank keeps
-                 the shipped default pool. -->
-            <TextView
-                android:layout_width="match_parent"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFormatAudio"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="@string/settings_shorts_queries"
-                android:textColor="@color/cobalt_text_secondary"
-                android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="11sp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="4dp" />
-
-            <EditText
-                android:id="@+id/etShortsQueries"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minLines="2"
-                android:gravity="top"
-                android:inputType="textMultiLine"
-                android:hint="@string/settings_shorts_queries_hint"
+                android:layout_weight="1"
+                android:text="@string/settings_format_audio"
                 android:textColor="@color/cobalt_text_primary"
-                android:textColorHint="@color/cobalt_text_secondary"
                 android:fontFamily="@font/ibm_plex_mono_regular"
-                android:textSize="13sp"
-                android:background="@color/cobalt_surface_elevated"
-                android:padding="10dp" />
+                app:strokeColor="@color/cobalt_input_border" />
 
-            <View android:layout_width="0dp" android:layout_height="24dp" />
+        </com.google.android.material.button.MaterialButtonToggleGroup>
 
-        </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
-</layout>
+        <!-- Phase 12: download location. Not wired into MediaStoreWriter
+             yet — persisted only, per Phase 12's DoD. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_download_location"
+            android:textColor="@color/cobalt_text_secondary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="11sp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etDownloadLocation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:textColor="@color/cobalt_text_primary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="13sp"
+            android:background="@color/cobalt_surface_elevated"
+            android:padding="10dp" />
+
+        <!-- Phase 13: theme. DYNAMIC is the only option that visibly
+             differs on this app's current single hardcoded dark palette
+             — see ThemeMode KDoc / ARCHITECTURE.md Phase 13 for why
+             LIGHT and DARK look the same today. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_theme"
+            android:textColor="@color/cobalt_text_secondary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="11sp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/toggleTheme"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnThemeLight"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_theme_light"
+                android:textColor="@color/cobalt_text_primary"
+                android:fontFamily="@font/ibm_plex_mono_regular"
+                app:strokeColor="@color/cobalt_input_border" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnThemeDark"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_theme_dark"
+                android:textColor="@color/cobalt_text_primary"
+                android:fontFamily="@font/ibm_plex_mono_regular"
+                app:strokeColor="@color/cobalt_input_border" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnThemeDynamic"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_theme_dynamic"
+                android:textColor="@color/cobalt_text_primary"
+                android:fontFamily="@font/ibm_plex_mono_regular"
+                app:strokeColor="@color/cobalt_input_border" />
+
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+        <!-- Phase 14: Invidious instance pool. Default (shown as hint,
+             not pre-filled text) is InvidiousShortsSource.DEFAULT_INSTANCES
+             — leaving this blank keeps that shipped default. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_invidious_instances"
+            android:textColor="@color/cobalt_text_secondary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="11sp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etInvidiousInstances"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minLines="2"
+            android:gravity="top"
+            android:inputType="textMultiLine|textUri"
+            android:hint="@string/settings_invidious_instances_hint"
+            android:textColor="@color/cobalt_text_primary"
+            android:textColorHint="@color/cobalt_text_secondary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="13sp"
+            android:background="@color/cobalt_surface_elevated"
+            android:padding="10dp" />
+
+        <!-- Phase 14 (optional half of the spec): editable Shorts
+             search-term pool, feeding ShortsQueryFeeder. Blank keeps
+             the shipped default pool. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_shorts_queries"
+            android:textColor="@color/cobalt_text_secondary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="11sp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etShortsQueries"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minLines="2"
+            android:gravity="top"
+            android:inputType="textMultiLine"
+            android:hint="@string/settings_shorts_queries_hint"
+            android:textColor="@color/cobalt_text_primary"
+            android:textColorHint="@color/cobalt_text_secondary"
+            android:fontFamily="@font/ibm_plex_mono_regular"
+            android:textSize="13sp"
+            android:background="@color/cobalt_surface_elevated"
+            android:padding="10dp" />
+
+        <View android:layout_width="0dp" android:layout_height="24dp" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
