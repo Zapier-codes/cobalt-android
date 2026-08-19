@@ -1,4 +1,4 @@
-# Cobalt-Android — Handover (Session 9 → 10)
+# Cobalt-Android — Handover (Session 10 → next)
 
 **Start by cloning the repo fresh: `git clone https://github.com/Zapier-codes/cobalt-android.git`**
 Do not trust any file content quoted in this document or prior handovers as
@@ -8,247 +8,153 @@ current — clone, then read the real files.
 `HANDOVER.md`.** If you don't find it there, this session's work hasn't
 landed yet.
 
-## Correction: "Hermes Session N" commit authors are separate Claude chat
-## sessions, not an autonomous pipeline
+## Workflow, unchanged from Session 9: trust the predecessor's handover,
+## don't re-verify it, don't build locally, commit-only + patch handoff
 
-Earlier phrasing in this file's history (and in at least one session's own
-notes) described this as a self-driving "Hermes pipeline" running
-unattended. **That's not accurate — the user runs multiple separate Claude
-chat sessions against this same repo in parallel** (this session included),
-each committing as `Hermes Session N <hermes-sessionN@cobalt-android.local>`.
-There's no autonomous loop deciding what to build next on its own; it's
-independent chat sessions, sometimes overlapping in time, working from the
-same `ARCHITECTURE.md`. The practical implications this creates are still
-real and still apply — see "Important: this repo is worked by multiple
-sessions in parallel" below — only the mental model of *why* was wrong.
+- **Do not attempt a local build.** Confirmed impossible in this sandbox
+  (no route to `services.gradle.org`, no Android SDK). GitHub Actions CI is
+  the real build/verification authority — check `gh run list` or the
+  Actions tab, not a local build.
+- **Only `git add` + `git commit`. Do not `git push`.** Generate patch
+  files (`git format-patch <base>..HEAD -o /mnt/user-data/outputs
+  --start-number=<N>`) and present them — the user applies via `git am` on
+  their own device and pushes themselves. Check `ARCHITECTURE.md`/prior
+  handovers for the last patch number used and continue from there.
+- **Trust the previous session's `ARCHITECTURE.md` ✅ markers and this
+  file at face value** — don't redo a full from-scratch verification pass.
+  A `git fetch` + `git log -10` + skim of `ARCHITECTURE.md`'s done-markers
+  is still worth the ~30 seconds; a full re-derivation is not.
 
-## Workflow rule (still applies, set two sessions ago): commit-only, patch
-## handoff, no local build
+## Important correction from this session: "Hermes" is gone. It was two
+## separate things, and the automated one has now been fully removed.
 
-- **Do not attempt a local build** (`./gradlew ...` or otherwise). Confirmed
-  impossible in this sandbox as of Session 7 (no route to
-  `services.gradle.org`, no Android SDK) and unchanged since. GitHub
-  Actions CI is the real build/verification authority — `cycle-prompt.txt`'s
-  MAINTAIN MODE already checks it via `gh run list`, once Phase 20 turns
-  that mode on (see "Immediate next steps" below — it hasn't yet).
-- **Only `git add` + `git commit`. Do not `git push`.** This sandbox can't
-  reach the user's device. The user applies commits via `git am` on their
-  own machine and pushes themselves.
-- **A session isn't finished until patch files are generated and
-  presented** via `present_files` — an unpushed local commit with no
-  patch file handed over is a dead end for the user. At the end of a
-  session:
-  1. `git fetch origin` then find the base commit — the last one already on
-     `origin/master` before this session's own commits.
-  2. `git format-patch <base>..HEAD -o /mnt/user-data/outputs
-     --start-number=<N>`, continuing whatever numbering is already in use.
-     **This session could not determine Session 8's actual patch numbers
-     with confidence** (see "Note on patch numbering" below) — check
-     `/mnt/user-data/outputs` and ask the user which number their Downloads
-     folder is actually up to if there's any doubt, rather than guessing
-     and risking a collision.
-  3. `present_files` the result(s) — don't just report a path in prose.
-  4. Give the user the exact push sequence:
-     ```
-     cd /root/projects/vid/cobalt-android
-     git fetch origin
-     git reset --hard origin/master
-     cp /mnt/sdcard/Download/000N-....patch .
-     git am 000N-....patch
-     [repeat cp/git am per patch, in order]
-     git push
-     ```
+Earlier handovers conflated two systems under "Hermes":
 
-### Note on patch numbering (read before generating this session's patches)
+1. **An actually-autonomous background loop** (`hermes-pipeline-launch.sh`,
+   a `while true` watch-loop on the user's device, launched via
+   Termux:Boot + a `.bashrc` resume trigger, calling Hermes Agent against a
+   local model-provider router on port 8787). This is the thing that once
+   carried the project from Phase 5 to Phase 14 unattended. **The user has
+   now fully deleted this** — Hermes Agent itself, the launcher script, the
+   boot trigger, the `.bashrc` resume trigger, and the fallback router are
+   all removed from the device as of this session. It cannot restart
+   itself; there is no lockfile/checkpoint to resume from anymore.
+2. **Separate manual Claude chat sessions** ("Session 6", "Session 7",
+   "Session 8", "Session 9" in prior handovers, this one is "Session 10")
+   — a human explicitly opening a chat, asking Claude to check
+   `ARCHITECTURE.md` and build the next phase, and manually applying the
+   resulting patch via `git am`. **This is still how the project moves
+   forward**, and is exactly what's happening in this session. If you are
+   reading this file as part of one of these sessions: you are actor #2,
+   not #1. Don't assume anything is running unattended anymore — nothing
+   is. A future session's own git-authored commits (this sandbox uses
+   `Claude <claude@anthropic.local>`) are not evidence of an automated
+   pipeline; they're evidence of a manual session like this one.
 
-Session 7's handover said Session 8 should start at `0007`. Session 8's
-`HANDOVER.md` update (`85644bc`) documented the *process* for numbering
-but — per the gap noted just below — **never actually recorded what
-numbers it used**, and Session 8's Phase 18 work reached `origin/master`
-(`9ba78db`/`90b365c`) without this file being updated to say so. This
-session generated its own Phase 19 patch as `0009` (one commit, on top of
-`90b365c`) as a reasonable continuation, but could not verify against
-Session 8's real numbers that this doesn't collide with something already
-sitting in the user's Downloads folder. **Whoever picks this up next:
-confirm with the user what their Downloads folder is actually up to
-before trusting `0009` as correct, and please actually record your own
-patch numbers in this file when you hand off — don't repeat this gap.**
+**Going forward, `git log` showing commits appear "on their own" between
+sessions still means what earlier handovers warned about — a different
+manual chat session did work in parallel, not that automation restarted.**
+Always `git fetch` before starting, same as before.
 
-## Real gap found and fixed this session: Session 8 never wrote a
-## Session 8 → 9 handover
+## What Session 10 did
 
-This session (`git fetch`+`git log` on arrival) found `origin/master` had
-already advanced past Session 7's last-known point — Phase 18
-(`9ba78db`/`90b365c`, authored `Hermes Session 8`) was on `origin/master`,
-but `HANDOVER.md` still read "Session 7 → 8" with no record of Session 8's
-work, its reasoning, or its known limitations anywhere in this file. This
-session's local unpushed Phase 18 work (built before discovering Session
-8's had already landed) was discarded via `git reset --hard origin/master`
-rather than merged, to avoid duplicating/conflicting with the real,
-already-pushed implementation — same handling precedent as the earlier
-Phase 8-17 collision described further down this file.
+### Full "no stubs / no placeholders" cross-check (ARCHITECTURE.md's own
+### standing rule) — one real gap found and fixed
 
-**What Session 8 actually did, reconstructed from its real commits and
-diffs** (not just trusted from a summary, since none existed — this was
-verified against the actual `9ba78db` diff):
+Grepped every `.kt`/`.xml` file for TODO/FIXME/stub/placeholder/hardcoded/
+not-implemented markers. Everything that matched was either historical
+KDoc referencing a *past* phase's now-resolved gap, or the Phase 13
+LIGHT-theme-looks-identical-to-DARK limitation already documented and
+accepted in `ARCHITECTURE.md` — nothing new.
 
-### Phase 18 — Performance: player lifecycle discipline done
+**One real, previously-undocumented gap:** the app could never send an
+API key to a cobalt instance. Checked cobalt's actual API contract
+(`github.com/imputnet/cobalt`, `docs/api.md`) — real auth scheme is
+`Authorization: Api-Key <value>`, and nothing in `SettingsRepository`,
+`SettingsSheet`, or `LinkResolverRepository` had any concept of it at
+all. This matters immediately: the user's next step (below) is pointing
+the app at a self-hosted Render instance, which — if configured with
+API-key auth, which most private/self-hosted instances are, precisely to
+avoid being an open proxy — would have silently 401'd with no way to
+configure around it from the app.
 
-Two DoD items, both done — commit `9ba78db` (content), `90b365c`
-(ARCHITECTURE.md mark-done):
+**Fixed, commit `1adc548`:**
+- `SettingsRepository.cobaltApiKey`: new persisted string. Blank (the
+  default) = send no `Authorization` header at all, matching the public
+  `cobalt.tools` no-auth-required default.
+- `SettingsSheet`: new `etCobaltApiKey` field directly under the existing
+  instance-URL field, same layout/styling, same persist-on-`onStop()`
+  pattern as the URL field — except blank is a *meaningful* value here
+  ("stop sending a key"), so unlike the URL field it always writes, never
+  skips on blank.
+- `LinkResolverRepository.resolveFromNetwork()`: sets
+  `Authorization: Api-Key <key>` on the resolve request, only when a key
+  is actually configured.
 
-1. **Verified, not assumed**, `ShortsFragment`'s and
-   `VideoPlayerDialogFragment`'s (Phase 8) pause/release discipline — both
-   already correct; `VideoPlayerDialogFragment` needed no code change,
-   only the read-through confirmation.
-2. **Next-item preloading**: a second, silent `ExoPlayer`
-   (`ShortsFragment.preloadPlayer`, `playWhenReady = false`, never attached
-   to a `PlayerView`) buffers the next Shorts item ahead of a swipe.
-   `playAt()` swaps it in as the main player when the target position
-   matches what was preloaded, instead of cold-starting
-   `setMediaItem()`/`prepare()` every time — the swap is the actual point
-   of preloading. `buildMediaItem()` was extracted so the main and preload
-   paths build `MediaItem`s identically.
+Not yet generated as a patch file as of this handover being written —
+**do this first if picking up mid-session** (see Immediate next steps).
 
-Full detail, including all three honestly-stated known limitations (no
-on-device leak verification possible from this sandbox, preload is exactly
-one item ahead not deeper, no metered-connection awareness), is in
-`ARCHITECTURE.md`'s Phase 18 write-up — read that, not this summary.
+### Hermes removal
 
-## What this session (9) did
+See the correction section above — this session gave the user the exact
+on-device removal commands (Termux `.bashrc`/boot script, Ubuntu
+container's Hermes Agent install, launcher script, lockfile dir, fallback
+router). Not verified from this sandbox (can't reach the user's device) —
+**confirm with the user it was actually run before assuming Hermes is
+gone**, though the architectural conclusion (manual sessions are the only
+actor now) holds regardless once they do.
 
-### Phase 19 — Full "no stubs" audit done
+## The user's actual next goal: deploy a cobalt instance to Render, wire
+## its URL + API key into the app, make it "fully active"
 
-One commit, `b748599`. Full detail — including the honest scope statement
-of exactly which files got a full re-read vs. which were covered only by
-the file-existence sweep and the stub-pattern grep — is in
-`ARCHITECTURE.md`'s Phase 19 write-up; **read that in full before assuming
-this phase means "everything was individually re-read."** It doesn't — six
-specific high-risk files (money-path logic, plus `ShortsViewModel.kt`
-specifically since that's the exact file class that hid fake data behind
-clean prose once before) got a genuine full-file read against their DoD;
-everything else got existence-checked and grep-swept. Stated that way on
-purpose rather than overclaiming.
+This is **not an `ARCHITECTURE.md` phase** — all 20 phases are the
+Android app itself; deploying the backend cobalt instance is
+infrastructure the app has always assumed exists (the app talks to
+*some* cobalt instance URL, configurable in Settings, defaulting to the
+public `cobalt.tools`). Nothing in the Kotlin/Gradle side needs a new
+phase number for this — Phase 20's "final gate" language is about the
+Android codebase being stub-free, which the audit above confirms it is
+(modulo the `state.json` note from Session 9, still applicable, still not
+something this sandbox can touch).
 
-**Headline findings:**
-- Zero TODOs, zero stubs, zero fake/mocked data found anywhere touched.
-- `ShortsViewModel.kt` (the file Session 4 originally found fully
-  hardcoded) is confirmed real today — every method traced to a real
-  repository call.
-- Two trivial, non-blocking nits (a doc-comment typo, a harmless redundant
-  default-value write in `SettingsFragment.onPause()`) — noted in
-  `ARCHITECTURE.md`, not fixed, not worth their own cycle.
-- `git log` backs every phase 1-18 with real commits, including visible
-  evidence of the collisions this file already documents (Phase 5's
-  three-commit merge, Phase 14's revert+reapply).
-- `state.json` is **not part of this repo** — it's the on-device
-  session-runner's own local state, never committed. DoD-3's "cross-check
-  against `state.json`'s `last_commit_sha` history if available" isn't
-  something this sandbox (or `git log` alone) can do. Stated as such
-  rather than silently skipped or assumed passing.
-
-## Important: this repo is worked by multiple sessions in parallel
-
-Real, still applies (see correction at the top for the accurate mental
-model): the user runs separate Claude chat sessions against this repo,
-sometimes overlapping in time — one carried the project from Phase 5 to
-Phase 14 while another was doing unrelated work in the same window, and
-separately two sessions built Phase 5 independently and collided (resolved
-via a 3-commit merge). This session (9) itself found and discarded its own
-stale local Phase 18 work after discovering Session 8 had already built and
-pushed the real thing. **Always `git fetch` and re-read `ARCHITECTURE.md`
-immediately before starting anything, even mid-session** — and if your own
-local commits turn out to duplicate something already on `origin/master`,
-discard yours via `git reset --hard origin/master` rather than trying to
-merge/rebase a competing implementation on top.
-
-## Verify this landed
-
-```
-cd cobalt-android
-git fetch origin
-git log --oneline origin/master -6
-```
-Per the workflow rule, **this session's Phase 19 commit (`b748599`
-locally) was deliberately not pushed** — don't expect to see it on
-`origin/master` until the user has pushed it themselves via the patch
-below. If missing, that doesn't mean it didn't land — check the local
-repo's own `git log` (unpushed), or ask the user whether they've pushed
-yet. Once pushed, expect (top of log): the Phase 19 commit, then `90b365c`
-(Session 8's Phase 18 mark-done) and the rest of the history below it.
-Check commit authorship for anything unexpected, same as always.
-
-## Honest limitations, this session
-
-- Same standing issue as every session since Session 7: **no local build
-  possible** in this sandbox. Confirming a real `./gradlew assembleDebug`
-  (or the GitHub Actions equivalent) is still the single most overdue item
-  across this entire project — every phase from 4 onward has been reviewed
-  by eye, never compiler-verified. Phase 20 doesn't require a local build
-  from this sandbox specifically, but a real build passing somewhere
-  (device or CI) before calling this project actually finished would be
-  reasonable regardless of what `state.json` says.
-- Phase 19's audit depth is honestly scoped, not exhaustive — see above and
-  `ARCHITECTURE.md`'s Phase 19 write-up for exactly what was and wasn't
-  individually re-read.
+**Not yet started as of this handover.** Concretely still needed:
+1. Deploy `imputnet/cobalt`'s API service to Render (Docker-based, per
+   cobalt's own deployment docs — not yet read/verified by this session,
+   do that first, don't assume the exact Render steps).
+2. Decide whether to turn on API-key auth on that instance (cobalt
+   supports running with no auth, API-key auth, or JWT/Turnstile auth —
+   the app as of this session's commit only supports the no-auth or
+   API-key cases, not JWT/Turnstile session flow).
+3. Enter the deployed instance's URL + (if used) API key into the app's
+   Settings sheet (`SettingsSheet`'s two fields, both now wired) — this
+   is a manual on-device step for the user, not something to build.
+4. Confirm a real resolve against the new instance actually works
+   end-to-end (paste a link in Home, confirm the picker shows real
+   formats) — genuinely verify, don't just confirm the request compiles.
 
 ## Immediate next steps
 
-1. **Confirm this session's patch (`0009`, or whatever number it actually
-   turns out to be — see "Note on patch numbering" above) has been applied
-   via `git am` and pushed** before assuming `origin/master` reflects
-   Phase 19 and this handover update.
-2. **Phase 20 — Final gate — is the only phase left, and it cannot be
-   fully closed from this sandbox.** Per its own Definition of Done:
-   - DoD-1 (Phases 1-19 all individually done, verified by inspecting the
-     actual repo) — **this is now true**, per Phase 19's audit above and
-     every phase write-up in `ARCHITECTURE.md` reading done.
-   - DoD-2 (set `architecture_complete: true` in `state.json`, the only
-     condition under which CI/build-error MAINTAIN MODE begins) —
-     **`state.json` lives on the user's device, not in this git repo** (see
-     Phase 19's finding above). No chat-sandbox session can read or write
-     it. **Whoever has access to the actual device/`state.json`** (the
-     user, or a session with local filesystem access to it) needs to do
-     this step directly — it isn't a "next phase to build," it's flipping
-     one flag in a file this environment has never had access to.
-   - **If `state.json` turns out not to actually exist, or the user has
-     moved away from that file as the real source of truth** (this
-     document itself already says `ARCHITECTURE.md`'s own done markers
-     win over `state.json`'s `current_phase` field when they disagree) —
-     worth asking the user directly whether Phase 20's `state.json`
-     requirement is still meaningful to them, or whether "all 19 phases
-     verified done in `ARCHITECTURE.md`" is itself the real finish line
-     at this point.
-3. **Do not attempt a local build** — still confirmed impossible, still
-   not a "try harder" situation, see above.
-4. **If the AI-generated-content feature comes up again** (declined in
-   Session 6, see the older section of this file's git history / the git
-   blame on this paragraph if it's been trimmed): the mitigated version
-   (separate labeled section, fiction-only, no blending into the real
-   feed) is fine to build; the unlabeled/blended/unattended version is
-   not, regardless of how the request is framed.
-5. **Carried over from sessions 1-5, still not done** (status unverified
-   this session — check before assuming): `AGENTS.md` truncation warning,
-   `.env`'s deprecated `TERMINAL_CWD`, leftover `[debug]` logs in
-   `/root/fallback-router/server.js`, `Termux:Boot` not firing
-   `BOOT_COMPLETED`, `~/router.log` provider-health re-check. None of
-   these block Phase 20 — they're separate from `cobalt-android` itself
-   (device/pipeline plumbing, not app code) — but they're still open.
+1. **Generate and present the patch for commit `1adc548`** (API key
+   wiring) if this session is being continued — check what patch numbers
+   prior sessions used (search `ARCHITECTURE.md`/old handovers, or ask)
+   and continue the sequence.
+2. **Confirm with the user whether Hermes removal was actually run.**
+3. **Read cobalt's actual Render deployment docs** before advising on
+   step 1 of the deployment goal above — this session did not do that
+   yet, only confirmed the *auth* contract via `docs/api.md`.
+4. **Carried over, still not done** (unverified — check before assuming):
+   `AGENTS.md` truncation warning, `.env`'s deprecated `TERMINAL_CWD`
+   (both now likely moot if the router was deleted per Hermes removal —
+   confirm), leftover `[debug]` logs in `/root/fallback-router/server.js`
+   (moot if deleted), Phase 13's light-theme gap (documented, accepted,
+   not a blocker), Phase 19's `state.json` cross-check (still not
+   possible from any sandbox).
 
-## Standing verification habits
+## Standing verification habits (unchanged)
 
-- `git fetch` + `git log --oneline -10` on `origin/master` before starting
-  anything — check commit authorship, confirm nothing unexpected landed.
-- Read `ARCHITECTURE.md`'s actual done markers, not a prior handover's
-  phase count or summary.
-- Take "verify X works" DoD items literally — this file has three examples
-  now of a "confirm it's wired up" step surfacing a real, previously-
-  unknown bug (Phase 15's shared-cursor exhaustion, Phase 16's duplicate
-  History writes, and this session's re-confirmation that
-  `ShortsViewModel.kt` genuinely isn't the hardcoded file it once was)
-  rather than being a formality.
-- **Write this file before ending your session**, even if nothing else
-  feels noteworthy — the gap this session found and fixed (Session 8
-  landing real work with zero handover record of it) is exactly the
-  failure mode this section exists to prevent, and it still happened once.
-- Do not attempt a local build — confirmed impossible in this sandbox.
+- `git fetch` + `git log --oneline -10` before starting anything, even
+  mid-session — check commit authorship, don't assume automation.
+- Read `ARCHITECTURE.md`'s actual `✅ done` markers, not a summary of them.
+- Take "verify X works" DoD items literally — real bugs have been found
+  this way multiple times across sessions 6 and 9.
+- No local build is possible in this sandbox — trust CI.
