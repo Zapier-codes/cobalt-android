@@ -1138,6 +1138,61 @@ not the spec's assumed shape.
 
 ---
 
+## Infrastructure (outside the phase system): deployed cobalt instance +
+## dynamic instance URL
+
+Not an `ARCHITECTURE.md` phase — all 20 phases above are the Android app
+itself; this is the backend/config infrastructure the app has always
+assumed exists (the app talks to *some* cobalt instance URL). See
+HANDOVER.md for the session-by-session narrative; this section is the
+durable "what exists and how it works" reference.
+
+**Deployed instance**: `https://cobalt-api-yuol.onrender.com` — a real,
+running `imputnet/cobalt` instance (confirmed live: `v11.7.1`, commit
+`a636575`, root endpoint returns real service-list JSON). Whether it has
+API-key auth turned on server-side has not been separately confirmed by
+any session — if a resolve starts failing with an auth-looking error, that
+is the first thing to check (`SettingsSheet`'s API key field, see below).
+
+**Instance URL is dynamic, not a per-device setting.** Originally a
+manual "cobalt instance" field in `SettingsSheet` (Phase 4-era). Replaced
+with `RemoteConfigRepository`
+(`app/src/main/java/com/cobalt/android/remoteconfig/`), which fetches the
+current URL from `remote-config.json` at the repo root via
+`raw.githubusercontent.com` — a real, public, unauthenticated GET, no
+separate backend service stood up for this. Falls back to (1) the last
+successfully fetched URL, cached on-device, then (2) the public
+`cobalt.tools` default, so a fetch failure never blocks a resolve
+outright. The field and its dead `onCobaltUrlChanged` callback were
+removed from `SettingsSheet`/`sheet_settings.xml` — verified before
+removing that nothing outside `SettingsSheet.kt` ever subscribed to that
+callback.
+
+**Two ways to change the URL for every installed client, no app update
+needed:**
+1. Edit `cobaltInstanceUrl` in `remote-config.json` directly (e.g. via
+   GitHub's web UI) and commit.
+2. Set the `COBALT_INSTANCE_URL` repository variable (Settings -> Secrets
+   and variables -> Actions -> Variables — a plain *variable*, not a
+   *secret*, since the file it ends up in is public either way) and either
+   run `.github/workflows/update-remote-config.yml` manually
+   (`workflow_dispatch`) or wait for its hourly schedule; it rewrites
+   `remote-config.json` from that variable and commits if changed. This is
+   the "git actions inserts it" path.
+
+**The cobalt API key is deliberately NOT part of this system.**
+`remote-config.json` is served from a public repo — anyone can `curl` it,
+no auth. Putting a secret in it would leak the secret to the world. The
+API key stays exactly where Session 10 put it: a per-device
+`SettingsSheet` field (`SettingsRepository.cobaltApiKey`), entered
+manually by whoever owns that install. If a shared, centrally-managed key
+is ever genuinely needed later, that requires an actual backend
+(something that can hold a real secret and answer authenticated requests),
+not an extension of this file-based mechanism — don't be tempted to bolt
+a key onto `remote-config.json` "just this once."
+
+---
+
 ## Non-negotiable rules for every phase (carried over, still apply)
 - Full working implementation only — no stubs, no TODOs, no placeholder/
   fake logic left in committed code. See "No stubs, no placeholders" above.
