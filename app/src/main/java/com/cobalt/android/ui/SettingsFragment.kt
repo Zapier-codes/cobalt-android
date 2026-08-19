@@ -113,8 +113,10 @@ class SettingsFragment : Fragment() {
 
     // Download location and the two Phase 14 multi-line fields are all
     // plain text fields with no natural "commit" event (unlike the toggle
-    // groups); persist on navigating away, same pattern SettingsSheet uses
-    // for etCobaltUrl via onStop().
+    // groups); persist on navigating away, same onStop()/onPause()-commit
+    // pattern SettingsSheet uses for its own remaining text field
+    // (etCobaltApiKey — the instance URL field this comment used to
+    // reference is gone, see SettingsSheet's own history).
     override fun onPause() {
         super.onPause()
         val binding = _binding ?: return
