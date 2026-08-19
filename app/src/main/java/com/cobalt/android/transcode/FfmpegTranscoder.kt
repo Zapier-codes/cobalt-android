@@ -13,14 +13,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
 /**
- * Phase 20: wraps `ffmpeg-kit` (see ARCHITECTURE.md Phase 20 for the
- * dependency/licensing tradeoff — this is
- * `com.antonkarpenko:ffmpeg-kit-full-gpl`, a community-maintained fork of
- * the now-retired `com.arthenica:ffmpeg-kit-full-gpl` that keeps the same
- * `com.arthenica.ffmpegkit.*` Java API — chosen because it's the only
- * currently-resolvable FFmpeg wrapper for Android with a real prebuilt
- * binary; see the in-file KDoc on [DEPENDENCY_NOTE] below before touching
- * this file).
+ * Phase 20: wraps `ffmpeg-kit` (see ARCHITECTURE.md Phase 20, and the
+ * in-file KDoc on [DEPENDENCY_NOTE] below, for the full dependency
+ * history — the package has changed twice since Phase 20 first landed,
+ * for two different real reasons, not once). Currently
+ * `io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb`, a
+ * from-source fork of the now-retired `com.arthenica:ffmpeg-kit-full-gpl`
+ * that keeps the same `com.arthenica.ffmpegkit.*` Java API — read
+ * [DEPENDENCY_NOTE] before touching this file or `app/build.gradle.kts`'s
+ * ffmpeg-kit line, especially before assuming a same-named class in some
+ * other fork's crash log proves that fork exposes the same public API.
  *
  * Reads and writes Android `content://` MediaStore URIs directly via
  * FFmpegKit's SAF (Storage Access Framework) bridge —
@@ -199,58 +201,76 @@ class FfmpegTranscoder(private val context: Context) {
          * confirming the artifact is genuinely gone, not a transient
          * resolution hiccup.
          *
-         * FIXED: swapped to `com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1`
-         * — sk3llo's actively-maintained fork
-         * (github.com/sk3llo/ffmpeg_kit_flutter — underscores, not
-         * hyphens; see the naming note below), rebuilt against FFmpeg
-         * v8.1.1. Verified before pinning, not assumed:
-         *   1. Its Maven POM declares dual GPL-3.0/LGPL-3.0 licensing and
-         *      the README explicitly lists x264/x265/vid.stab/xvidcore as
-         *      included GPL libraries — confirms this is genuinely the
-         *      full-gpl variant (H.264/H.265 encode intact for
-         *      `TranscodeProfile.ALL_VIDEO`), not a stripped-down rebrand
-         *      that would silently drop those tiers.
-         *   2. A real production crash log from this fork's own issue
-         *      tracker (sk3llo/ffmpeg_kit_flutter#71) shows a stack trace
-         *      running through `com.arthenica.ffmpegkit.NativeLoader` and
-         *      `com.arthenica.ffmpegkit.FFmpegKitConfig` — proof the fork
-         *      kept the ORIGINAL Java package namespace and only
-         *      republished under new Maven coordinates. That's why this
-         *      file's imports (`com.arthenica.ffmpegkit.*`, top of file)
-         *      needed zero changes for the swap.
+         * FIRST FIX ATTEMPT (WRONG — kept here as a warning, not a
+         * recommendation): a prior session swapped to
+         * `com.antonkarpenko:ffmpeg-kit-full-gpl`, reasoning that a crash
+         * log from that fork's issue tracker referencing
+         * `com.arthenica.ffmpegkit.NativeLoader`/`FFmpegKitConfig` proved
+         * the original Java API survived. It didn't hold up: CI still
+         * failed, now with `Unresolved reference: arthenica` on every
+         * import in this file (`FFmpegKit`, `FFmpegKitConfig`,
+         * `FFmpegSession`, `ReturnCode`, `Statistics` — all of them). The
+         * dependency itself resolved fine (native `.so` files packaged
+         * into the APK without error) — the AAR just doesn't expose these
+         * classes for direct Kotlin/Java import. Root cause, confirmed via
+         * that fork's own listing (pub.dev/packages/ffmpeg_kit_flutter_new,
+         * repo `sk3llo/ffmpeg-kit-flutter`): it's a **Flutter plugin**,
+         * built to be consumed through Flutter's Dart bridge, not as a
+         * plain Android library — the crash log's class references don't
+         * mean the *public* Java wrapper API this file needs is exported
+         * the same way. Lesson for next time: a matching package name in
+         * someone else's stack trace is not proof of a matching public
+         * API surface — check what the artifact is actually *for*
+         * (Flutter plugin vs. plain Android library) before trusting that.
          *
-         * NAMING NOTE (the repo name itself was wrong in two places in this
-         * codebase until this was checked directly): the fork's own Maven
-         * POM — and therefore Maven Central's and mvnrepository.com's
-         * "HomePage" field — advertises
-         * `github.com/sk3llo/ffmpeg-kit-flutter` (hyphens). That URL is a
-         * 404; upstream's own published metadata is simply wrong. The real,
-         * live repository is `github.com/sk3llo/ffmpeg_kit_flutter`
-         * (underscores) — confirmed by fetching both URLs directly (the
-         * hyphenated one 404s, the underscored one resolves) and by
-         * mvnrepository.com's separately-curated sidebar "Links" section,
-         * which points to the underscored name even on the same page whose
-         * "HomePage" field shows the dead hyphenated one. The Maven
-         * coordinate itself (`com.antonkarpenko:ffmpeg-kit-full-gpl`) was
-         * never affected by this — Maven Central doesn't care what a POM's
-         * `<url>` tag says — but two comments in this codebase had copied
-         * the wrong (hyphenated) URL from that same dead POM field. Fixed
-         * here and in `app/build.gradle.kts`; if you see the hyphenated
-         * form anywhere else, it's wrong, not a stylistic variant.
+         * ACTUAL FIX: swapped to
+         * `io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7`
+         * — `JamaisMagic/ffmpeg-kit-16KB`, a fork of the real
+         * `arthenica/ffmpeg-kit` source tree (not a Flutter plugin wrapper
+         * around it), rebuilt for Android 16KB page-size compatibility
+         * (a real, separate requirement — see developer.android.com/guide/
+         * practices/page-sizes — not related to the retirement above).
+         * Verified before pinning:
+         *   1. Its `android/README.md` is the **unmodified original**
+         *      arthenica Android docs — same `import
+         *      com.arthenica.ffmpegkit.FFmpegKit;`, same `FFmpegKit`/
+         *      `FFmpegKitConfig`/`FFmpegSession`/`ReturnCode`/`Statistics`
+         *      API this file already calls. This is a genuine drop-in:
+         *      zero import changes needed, unlike the antonkarpenko dead
+         *      end above.
+         *   2. `full-gpl` is a real, separately-published artifact under
+         *      this group (`ffmpeg-kit-lts-full-gpl-16kb`, distinct from
+         *      `ffmpeg-kit-lts-16kb`/`ffmpeg-kit-lts-min-16kb`/etc.) —
+         *      confirmed against Maven Central's own listing for the
+         *      group, not assumed from the plain `ffmpeg-kit-lts-16kb`
+         *      artifact's LGPL-only license metadata (which does NOT
+         *      include x264/x265 — picking that one instead would have
+         *      silently dropped `TranscodeProfile.ALL_VIDEO`'s MP4 tiers,
+         *      the same class of mistake the naming note below describes).
+         *   3. `lts` (not `main`) chosen for wider device compatibility
+         *      (API 16+ vs Main's API 24+) — matches this project's own
+         *      `minSdk`; revisit if that ever changes.
          *
-         * Real risk, stated plainly: this is still a community-run fork,
-         * not an official release — releases have been regular (monthly
-         * or better) through mid-2026, but if `ffmpeg-kit-full-gpl:2.2.1`
-         * (or whatever version this line is pinned to by the time you
-         * read this) stops resolving, check
-         * https://central.sonatype.com/artifact/com.antonkarpenko/ffmpeg-kit-full-gpl
-         * for the latest published version before assuming the fork is
-         * dead — bump the version first, only look for a different
-         * replacement if the whole `com.antonkarpenko` group is gone.
-         * Building FFmpegKitNext from source (the official retired
-         * project's suggested successor, source-only, no prebuilt
-         * Android .aar) remains the durable long-term fix but is out of
-         * scope without Android NDK access to build/test it.
+         * VERSION NOTE, stated honestly: `6.1.7` is this session's best
+         * match against this group's other sibling artifacts
+         * (`ffmpeg-kit-lts-16kb` and `ffmpeg-kit-main-16kb` were both
+         * confirmed at `6.1.7`/`6.1.4` respectively at research time), not
+         * a version number read directly off `ffmpeg-kit-lts-full-gpl-16kb`'s
+         * own Maven Central page (that page's version table didn't render
+         * in this sandbox's fetch tooling). If CI fails on this line with
+         * `Could not find io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7`
+         * specifically (not an `Unresolved reference` compile error), that
+         * is this version guess being wrong, not the whole approach —
+         * check https://central.sonatype.com/artifact/io.github.jamaismagic.ffmpeg/ffmpeg-kit-lts-full-gpl-16kb
+         * for the real current version and bump it, same fix pattern as
+         * this file's history already shows twice above.
+         *
+         * NAMING NOTE (kept from the previous fix attempt as a general
+         * caution, even though it no longer applies to the coordinate
+         * actually pinned above): a POM's `<url>`/"HomePage" metadata field
+         * is not authoritative for whether a repo or artifact is real —
+         * verify by fetching the URL directly, not by trusting what a
+         * package index displays.
          */
         const val DEPENDENCY_NOTE = "" // anchor for the KDoc above; not read at runtime
     }

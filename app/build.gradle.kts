@@ -81,43 +81,32 @@ dependencies {
     // would silently drop the H.264 video tiers, which are the ones most
     // players actually support.
     //
-    // `com.arthenica:ffmpeg-kit-full-gpl:6.0-2` (the original coordinate)
-    // is DEAD — arthenica retired FFmpegKit and Maven Central removed all
-    // `com.arthenica:*` binaries on 2025-04-01; the CI failure that led
-    // here was `Could not find com.arthenica:ffmpeg-kit-full-gpl:6.0-2`,
-    // not a transient resolution issue. See FfmpegTranscoder's
-    // DEPENDENCY_NOTE KDoc for the full incident writeup.
+    // Dependency history (two real breaks, two different causes — see
+    // FfmpegTranscoder's DEPENDENCY_NOTE KDoc for the full incident
+    // writeup before changing this line):
+    // 1. `com.arthenica:ffmpeg-kit-full-gpl:6.0-2` (the original
+    //    coordinate) is DEAD — arthenica retired FFmpegKit and Maven
+    //    Central removed all `com.arthenica:*` binaries on 2025-04-01.
+    // 2. `com.antonkarpenko:ffmpeg-kit-full-gpl` (the first replacement)
+    //    resolved fine but broke the build a different way — CI failed
+    //    with `Unresolved reference: arthenica` on every FFmpegKit class.
+    //    Root cause: that coordinate is a Flutter plugin build
+    //    (github.com/sk3llo/ffmpeg-kit-flutter), not a plain Android
+    //    library — it doesn't expose the public Java API this app calls,
+    //    regardless of a same-named class appearing in one of its crash
+    //    logs (see DEPENDENCY_NOTE for why that "verification" didn't
+    //    actually verify the right thing).
     //
-    // Replaced with `com.antonkarpenko:ffmpeg-kit-full-gpl` (sk3llo's
-    // actively-maintained fork, github.com/sk3llo/ffmpeg_kit_flutter —
-    // underscores, not hyphens; the hyphenated form is a dead link, see
-    // FfmpegTranscoder's DEPENDENCY_NOTE for how this was confirmed —
-    // 126+ stars, real users, releases through Jul 2026), rebuilt against
-    // FFmpeg v8.1.1 (vs the dead original's 6.0). Verified before pinning:
-    // (1) POM declares dual GPL-3.0/LGPL-3.0 licensing and the README
-    // explicitly lists x264/x265/vid.stab/xvidcore as included GPL
-    // libraries — confirms this IS the true full-gpl variant, not a
-    // stripped-down "min" rebrand; (2) a real production crash log from
-    // this fork's own issue tracker (sk3llo/ffmpeg_kit_flutter#71) shows
-    // a stack trace running through `com.arthenica.ffmpegkit.NativeLoader`
-    // and `com.arthenica.ffmpegkit.FFmpegKitConfig` — proof the fork kept
-    // the ORIGINAL Java package namespace and only republished under new
-    // Maven coordinates, so this is a true drop-in swap: zero import
-    // changes needed anywhere in this codebase.
-    implementation("com.antonkarpenko:ffmpeg-kit-full-gpl:2.1.0")
-
-    // Version note (found and fixed this session, replacing a bad
-    // 2.2.1 pin): 2.2.1 is a REAL version, but only for the plain
-    // `ffmpeg-kit-full` artifact (non-GPL) — this fork versions its
-    // `-gpl` variant independently and it lags behind. Confirmed
-    // directly against Maven Central's own repository index
-    // (repo1.maven.org/maven2/com/antonkarpenko/ffmpeg-kit-full-gpl/),
-    // which lists exactly 1.0.0, 1.0.1, 1.1.0, 2.0.0, 2.0.1, 2.1.0 —
-    // no 2.2.1. A nonexistent-version pin is a real "could not
-    // resolve" bug, not something a stale CI cache changes — if this
-    // ever LOOKS like it partially works in a CI log (e.g. native .so
-    // files appearing to package successfully) despite a bad pin,
-    // suspect .github/workflows/build.yml's `restore-keys` PREFIX
+    // Current: `io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb`
+    // — JamaisMagic/ffmpeg-kit-16KB, a genuine from-source fork of
+    // arthenica/ffmpeg-kit (not a Flutter wrapper), rebuilt for Android's
+    // 16KB page-size requirement. Its android/README.md is the unmodified
+    // original arthenica Android docs — confirmed real drop-in, zero
+    // import changes needed. Version `6.1.7` is a best-match against this
+    // group's sibling artifacts, not read directly off this exact
+    // artifact's own Maven page (see DEPENDENCY_NOTE's "VERSION NOTE" for
+    // what to do if this specific line fails to resolve).
+    implementation("io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-full-gpl-16kb:6.1.7")
     // fallback serving leftover artifacts from a previous, different
     // dependency declaration, not evidence this pin is actually valid.
     // Always verify the exact version against Maven Central's own
