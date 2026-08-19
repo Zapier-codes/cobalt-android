@@ -989,14 +989,64 @@ not the spec's assumed shape.
 
 ---
 
-### Phase 18 — Performance: player lifecycle discipline
+### Phase 18 — Performance: player lifecycle discipline ✅ done
+**Files (actual):**
+- `app/src/main/java/com/cobalt/android/ui/shorts/ShortsFragment.kt` —
+  added a second, silent `ExoPlayer` (`preloadPlayer`) that buffers the
+  next item ahead of a swipe. `playAt()` now checks whether
+  `preloadedPosition` already matches the target position and, if so,
+  **swaps that player in** (releases the outgoing main player, promotes
+  the preload player to `player`, re-attaches it to the new `PlayerView`)
+  instead of cold-starting `setMediaItem()`/`prepare()` — the swap is the
+  actual point of preloading; buffering ahead of time and then throwing it
+  away on swipe would accomplish nothing. `MediaItem` construction was
+  pulled out into a shared `buildMediaItem()` so both the main and preload
+  paths build it identically.
+- `VideoPlayerDialogFragment.kt` (Phase 8) — **no code changes**; read
+  closely against DoD-1 and confirmed correct as-is: `onPause()` pauses,
+  `onDestroyView()` releases. See "Verification, not assumption" below.
+
 **Definition of Done:**
-1. `ShortsFragment`'s shared `ExoPlayer` (Phase 2) and the Downloads
-   tap-to-play surface (Phase 8) both release/pause correctly on
-   backgrounding and screen exit — verified, not assumed.
-2. The next Shorts item preloads (or at least its stream URL pre-resolves)
-   shortly before it becomes visible, so swiping doesn't show a visible
-   buffering gap on a decent connection.
+1. ✅ **Verified, not assumed** — read both files against this specifically,
+   not a "looks fine" skim:
+   - `ShortsFragment`: `onPause()` pauses both `player` and `preloadPlayer`;
+     `onDestroyView()` releases both and resets `currentlyBoundPosition`/
+     `preloadedPosition` to `NO_POSITION`. `onResume()` only sets
+     `playWhenReady = true` on an already-loaded player (Phase 16's fix),
+     never a fresh `prepare()`, so resuming doesn't leak or double-buffer.
+   - `VideoPlayerDialogFragment`: `onPause()` pauses, `onDestroyView()`
+     releases and nulls the reference. Already correct since Phase 8 —
+     this phase's contribution here is the verification itself, not a fix.
+   - Not verified: an actual on-device run confirming no leak under
+     `LeakCanary`/profiler — see "Known limitation" below, same standing
+     gap as every phase since Phase 4.
+2. ✅ The next Shorts item preloads shortly before it becomes visible — see
+   `preloadNext()`/the swap in `playAt()` above. Kicked off from three call
+   sites: `onPageSelected()` (normal swipe), the initial `shorts.observe()`
+   auto-play, matching where `playAt()` itself is called from.
+
+**Known limitations, honestly stated:**
+- **Not compiled or run** — no Android SDK / no route to
+  `services.gradle.org` in this sandbox, same standing issue as every
+  phase before it. DoD-1's "verified, not assumed" is a careful *reading*
+  against the lifecycle contract, not an instrumented on-device
+  confirmation — an actual leak (e.g. via `LeakCanary`) can't be ruled out
+  from source review alone.
+- Preloading is exactly one item ahead, not deeper. Swiping past the
+  preloaded item before it's promoted (fast multi-swipe) falls back to the
+  cold `setMediaItem()`/`prepare()` path for whatever position is actually
+  landed on — correct, just not instant, same as before this phase.
+- No network-awareness: preloading fires regardless of metered/limited
+  connections, and if the user swipes backward instead of forward the
+  buffered-ahead item is simply released unused (`preloadNext()`'s stale-
+  target branch) — wasted bandwidth on that one item, not a correctness
+  bug. A metered-connection guard would be reasonable future polish, not
+  required by this phase's DoD.
+- A configuration change (e.g. rotation, if ever enabled — currently the
+  app doesn't lock orientation but this wasn't specifically tested)
+  destroys and rebuilds both players from scratch same as it always did
+  for the main player pre-Phase-18 — not a new gap, just not improved by
+  this phase either.
 
 ---
 
