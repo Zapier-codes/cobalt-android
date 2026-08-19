@@ -79,11 +79,30 @@ dependencies {
     // flac (all already free of GPL entanglement on their own, bundled
     // here anyway since full-gpl is a superset). Picking a smaller variant
     // would silently drop the H.264 video tiers, which are the ones most
-    // players actually support — see FfmpegTranscoder's DEPENDENCY_NOTE
-    // KDoc for why this specific artifact/version is pinned, the real risk
-    // that Maven Central stops serving it (ffmpeg-kit is archived/retired
-    // upstream as of 2026), and the fallback fork to switch to if it does.
-    implementation("com.arthenica:ffmpeg-kit-full-gpl:6.0-2")
+    // players actually support.
+    //
+    // `com.arthenica:ffmpeg-kit-full-gpl:6.0-2` (the original coordinate)
+    // is DEAD — arthenica retired FFmpegKit and Maven Central removed all
+    // `com.arthenica:*` binaries on 2025-04-01; the CI failure that led
+    // here was `Could not find com.arthenica:ffmpeg-kit-full-gpl:6.0-2`,
+    // not a transient resolution issue. See FfmpegTranscoder's
+    // DEPENDENCY_NOTE KDoc for the full incident writeup.
+    //
+    // Replaced with `com.antonkarpenko:ffmpeg-kit-full-gpl` (sk3llo's
+    // actively-maintained fork, github.com/sk3llo/ffmpeg-kit-flutter —
+    // 126+ stars, real users, releases through Jul 2026), rebuilt against
+    // FFmpeg v8.1.1 (vs the dead original's 6.0). Verified before pinning:
+    // (1) POM declares dual GPL-3.0/LGPL-3.0 licensing and the README
+    // explicitly lists x264/x265/vid.stab/xvidcore as included GPL
+    // libraries — confirms this IS the true full-gpl variant, not a
+    // stripped-down "min" rebrand; (2) a real production crash log from
+    // this fork's own issue tracker (sk3llo/ffmpeg_kit_flutter#71) shows
+    // a stack trace running through `com.arthenica.ffmpegkit.NativeLoader`
+    // and `com.arthenica.ffmpegkit.FFmpegKitConfig` — proof the fork kept
+    // the ORIGINAL Java package namespace and only republished under new
+    // Maven coordinates, so this is a true drop-in swap: zero import
+    // changes needed anywhere in this codebase.
+    implementation("com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

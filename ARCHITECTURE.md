@@ -1134,19 +1134,29 @@ video — via a bottom sheet where the user can pick literally any quality
 and ffmpeg handles the rest at full capacity, not a limited/preview subset.
 
 **Files (actual):**
-- `app/build.gradle.kts` — adds `com.arthenica:ffmpeg-kit-full-gpl:6.0-2`.
-  **Read `FfmpegTranscoder`'s `DEPENDENCY_NOTE` KDoc before touching this
-  line.** Short version: upstream `arthenica/ffmpeg-kit` is archived/
-  retired as of 2026 (no further releases); 6.0-2 is the last real Android
-  build and is still Maven-Central-resolvable as of this session, but that
-  could change. `full-gpl` (not `full`/`min-gpl`) is required specifically
-  for bundled x264 (H.264 encode) — a smaller variant would silently drop
-  the most widely-compatible video tier. If resolution ever breaks, the
-  documented fallback is switching this one line to
-  `com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1` (same package/class names,
-  community-maintained fork) — nothing else should need to change for that
-  swap. Building the actively-maintained `FFmpegKitNext` from source is the
-  durable long-term fix but needs Android NDK this sandbox doesn't have.
+- `app/build.gradle.kts` — adds ffmpeg-kit. **Read `FfmpegTranscoder`'s
+  `DEPENDENCY_NOTE` KDoc before touching this line.** Short version:
+  originally pinned `com.arthenica:ffmpeg-kit-full-gpl:6.0-2`; CI then
+  failed for real with `Could not find
+  com.arthenica:ffmpeg-kit-full-gpl:6.0-2` — Maven Central removed all
+  `com.arthenica:*` ffmpeg-kit binaries on 2025-04-01 following the
+  project's retirement, and this wasn't caught before that CI run.
+  **Fixed** by swapping to `com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1`
+  (sk3llo's actively-maintained fork, FFmpeg v8.1.1, releases through Jul
+  2026) after verifying two things directly rather than assuming: (1) its
+  POM's dual GPL-3.0/LGPL-3.0 licensing plus README confirm x264/x265 are
+  genuinely bundled — this is a true full-gpl variant, not a stripped
+  rebrand that would silently drop H.264 encode; (2) a real crash log from
+  that fork's own issue tracker
+  (sk3llo/ffmpeg_kit_flutter#71) shows the stack trace running through
+  `com.arthenica.ffmpegkit.*` classes, proving the fork kept the original
+  Java package and only republished under new Maven coordinates — so
+  `FfmpegTranscoder.kt`'s imports needed zero changes. If this version
+  ever stops resolving, check
+  central.sonatype.com/artifact/com.antonkarpenko/ffmpeg-kit-full-gpl for
+  a newer release before assuming the fork itself is dead. Building the
+  actively-maintained `FFmpegKitNext` from source remains the durable
+  long-term fix but needs Android NDK this sandbox doesn't have.
 - `app/src/main/java/com/cobalt/android/transcode/TranscodeProfile.kt` —
   the quality ladder itself. `ALL_VIDEO`: 2160p/1440p/1080p/720p/480p/360p
   H.264 (CRF-based, not fixed-bitrate — see in-file KDoc for why), plus

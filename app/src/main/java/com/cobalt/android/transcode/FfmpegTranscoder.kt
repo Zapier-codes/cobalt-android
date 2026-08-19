@@ -14,10 +14,13 @@ import kotlin.coroutines.resume
 
 /**
  * Phase 20: wraps `ffmpeg-kit` (see ARCHITECTURE.md Phase 20 for the
- * dependency/licensing tradeoff — this is `com.arthenica:ffmpeg-kit-full-gpl`,
- * an officially retired-but-still-Maven-resolvable library, chosen because
- * it's the only FFmpeg wrapper for Android with a real prebuilt binary; see
- * the in-file KDoc on [DEPENDENCY_NOTE] below before touching this file).
+ * dependency/licensing tradeoff — this is
+ * `com.antonkarpenko:ffmpeg-kit-full-gpl`, a community-maintained fork of
+ * the now-retired `com.arthenica:ffmpeg-kit-full-gpl` that keeps the same
+ * `com.arthenica.ffmpegkit.*` Java API — chosen because it's the only
+ * currently-resolvable FFmpeg wrapper for Android with a real prebuilt
+ * binary; see the in-file KDoc on [DEPENDENCY_NOTE] below before touching
+ * this file).
  *
  * Reads and writes Android `content://` MediaStore URIs directly via
  * FFmpegKit's SAF (Storage Access Framework) bridge —
@@ -187,39 +190,47 @@ class FfmpegTranscoder(private val context: Context) {
          * DEPENDENCY NOTE (read before changing the ffmpeg-kit version or
          * package variant in app/build.gradle.kts):
          *
-         * `arthenica/ffmpeg-kit` was archived by its maintainer in 2026 —
-         * "FFmpegKit has been officially retired," no further releases.
-         * The last real Android build is version 6.0 (Aug 2023), published
-         * as `com.arthenica:ffmpeg-kit-full-gpl:6.0-2` on Maven Central.
-         * This app pins that exact artifact because:
-         *   1. It's the only ffmpeg-kit variant that bundles GPL-licensed
-         *      x264/x265 — required for the H.264 tiers in
-         *      `TranscodeProfile.ALL_VIDEO`, which is by far the most
-         *      widely-compatible playback target and the one users expect
-         *      "download a video" to produce by default.
-         *   2. The maintainer's actively-developed continuation,
-         *      `FFmpegKitNext` (github.com/arthenica/ffmpeg-kit-next), is
-         *      source-only — no prebuilt Android `.aar` — so using it here
-         *      would mean building FFmpeg's full native toolchain (NDK,
-         *      autoconf, per-ABI cross-compiles) as part of this project's
-         *      own build, which this sandbox has no Android SDK/NDK to do
-         *      or verify, and which is a much bigger undertaking than
-         *      "wire in a quality picker."
+         * `arthenica/ffmpeg-kit` was archived by its maintainer in 2025 —
+         * "FFmpegKit has been officially retired," no further releases —
+         * and Maven Central removed all `com.arthenica:*` ffmpeg-kit
+         * binaries on 2025-04-01. This app originally pinned
+         * `com.arthenica:ffmpeg-kit-full-gpl:6.0-2`; CI eventually failed
+         * with `Could not find com.arthenica:ffmpeg-kit-full-gpl:6.0-2`,
+         * confirming the artifact is genuinely gone, not a transient
+         * resolution hiccup.
          *
-         * Real risk, stated plainly: Maven Central artifact removal for
-         * retired projects does happen on a schedule set by the
-         * maintainer, and 6.0-2 could stop resolving at some point after
-         * this session. If `./gradlew` fails to resolve
-         * `ffmpeg-kit-full-gpl:6.0-2`, the fastest fix is switching the one
-         * dependency line in `app/build.gradle.kts` to a community-
-         * maintained fork publishing the same API surface — e.g.
-         * `com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1` (also on Maven
-         * Central, same package/class names, rebuilt for Android 15's
-         * 16 KB page size) — nothing in this file or `TranscodeWorker`
-         * should need to change for that swap, since both publish the
-         * same `com.arthenica.ffmpegkit.*` API. Building `FFmpegKitNext`
-         * from source is the durable long-term fix but is out of scope
-         * for a single session without Android NDK access to test it.
+         * FIXED: swapped to `com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1`
+         * — sk3llo's actively-maintained fork
+         * (github.com/sk3llo/ffmpeg-kit-flutter), rebuilt against FFmpeg
+         * v8.1.1. Verified before pinning, not assumed:
+         *   1. Its Maven POM declares dual GPL-3.0/LGPL-3.0 licensing and
+         *      the README explicitly lists x264/x265/vid.stab/xvidcore as
+         *      included GPL libraries — confirms this is genuinely the
+         *      full-gpl variant (H.264/H.265 encode intact for
+         *      `TranscodeProfile.ALL_VIDEO`), not a stripped-down rebrand
+         *      that would silently drop those tiers.
+         *   2. A real production crash log from this fork's own issue
+         *      tracker (sk3llo/ffmpeg_kit_flutter#71) shows a stack trace
+         *      running through `com.arthenica.ffmpegkit.NativeLoader` and
+         *      `com.arthenica.ffmpegkit.FFmpegKitConfig` — proof the fork
+         *      kept the ORIGINAL Java package namespace and only
+         *      republished under new Maven coordinates. That's why this
+         *      file's imports (`com.arthenica.ffmpegkit.*`, top of file)
+         *      needed zero changes for the swap.
+         *
+         * Real risk, stated plainly: this is still a community-run fork,
+         * not an official release — releases have been regular (monthly
+         * or better) through mid-2026, but if `ffmpeg-kit-full-gpl:2.2.1`
+         * (or whatever version this line is pinned to by the time you
+         * read this) stops resolving, check
+         * https://central.sonatype.com/artifact/com.antonkarpenko/ffmpeg-kit-full-gpl
+         * for the latest published version before assuming the fork is
+         * dead — bump the version first, only look for a different
+         * replacement if the whole `com.antonkarpenko` group is gone.
+         * Building FFmpegKitNext from source (the official retired
+         * project's suggested successor, source-only, no prebuilt
+         * Android .aar) remains the durable long-term fix but is out of
+         * scope without Android NDK access to build/test it.
          */
         const val DEPENDENCY_NOTE = "" // anchor for the KDoc above; not read at runtime
     }
