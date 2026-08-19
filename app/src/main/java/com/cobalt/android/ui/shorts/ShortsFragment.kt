@@ -28,6 +28,15 @@ class ShortsFragment : Fragment() {
     private var player: ExoPlayer? = null
     private var currentlyBoundPosition = RecyclerView.NO_POSITION
 
+    // Phase 18 — DoD-2: a second, silent ExoPlayer that buffers the *next*
+    // item ahead of time so swiping doesn't show a visible buffering gap.
+    // Never attached to a PlayerView (ExoPlayer buffers video/audio tracks
+    // independent of having a Surface — a decoded frame is only needed at
+    // render time, which preloading deliberately never reaches:
+    // playWhenReady stays false), and never the thing the user is watching.
+    private var preloadPlayer: ExoPlayer? = null
+    private var preloadedPosition = RecyclerView.NO_POSITION
+
     // Phase 17: see HomeFragment's identically-named field — same
     // cancel-not-just-hide lifecycle contract from SkeletonPulse.
     private var skeletonAnimator: ValueAnimator? = null
@@ -53,6 +62,7 @@ class ShortsFragment : Fragment() {
         binding.vpShorts.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 playAt(position)
+                preloadNext(position + 1)
                 // Start prefetching the next page a couple items before the end
                 // of what's currently loaded, so scrolling never visibly stalls.
                 val list = adapter.currentList
@@ -64,7 +74,9 @@ class ShortsFragment : Fragment() {
             val previousPosition = binding.vpShorts.currentItem
             adapter.submitList(list) {
                 if (list.isNotEmpty() && currentlyBoundPosition == RecyclerView.NO_POSITION) {
-                    playAt(previousPosition.coerceIn(0, list.size - 1))
+                    val start = previousPosition.coerceIn(0, list.size - 1)
+                    playAt(start)
+                    preloadNext(start + 1)
                 }
             }
         }
@@ -109,6 +121,12 @@ class ShortsFragment : Fragment() {
     override fun onPause() {
         super.onPause()
         player?.pause()
+        // Phase 18 — DoD-1: playWhenReady on the preload player is already
+        // false (see field doc above), so pause() here is a no-op on
+        // playback state — kept for defense in depth (any future code path
+        // that sets playWhenReady on it should still respect backgrounding),
+        // not because it changes today's behavior.
+        preloadPlayer?.pause()
     }
 
     private fun ensurePlayer() {
@@ -123,8 +141,6 @@ class ShortsFragment : Fragment() {
      */
     private fun playAt(position: Int, retryIfMissing: Boolean = true) {
         val item = adapter.currentList.getOrNull(position) ?: return
-        ensurePlayer()
-        val exo = player ?: return
 
         val recyclerView = binding.vpShorts.getChildAt(0) as? RecyclerView ?: return
         val holder = recyclerView.findViewHolderForAdapterPosition(position) as? ShortsAdapter.ViewHolder
@@ -141,28 +157,72 @@ class ShortsFragment : Fragment() {
         // video the user didn't newly start.
         val isNewItem = position != currentlyBoundPosition
 
-        exo.stop()
-        exo.clearMediaItems()
-        holder.binding.playerView.player = exo
-
-        val mediaItem = when (item.streamKind) {
-            StreamKind.HLS -> MediaItem.Builder()
-                .setUri(item.streamUrl)
-                .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
-                .build()
-            StreamKind.DASH -> MediaItem.Builder()
-                .setUri(item.streamUrl)
-                .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_MPD)
-                .build()
-            StreamKind.PROGRESSIVE -> MediaItem.fromUri(item.streamUrl)
+        // Phase 18 — DoD-2: if preloadNext() already buffered exactly this
+        // position, promote that player to be the main one instead of
+        // cold-starting a fresh setMediaItem()/prepare() — this is the
+        // actual point of preloading; without this swap, preloading would
+        // just waste bandwidth buffering a stream nothing ever plays from.
+        val exo: ExoPlayer
+        if (preloadedPosition == position && preloadPlayer != null) {
+            player?.release()
+            exo = preloadPlayer!!
+            player = exo
+            preloadPlayer = null
+            preloadedPosition = RecyclerView.NO_POSITION
+            holder.binding.playerView.player = exo
+            exo.playWhenReady = true
+        } else {
+            ensurePlayer()
+            exo = player ?: return
+            exo.stop()
+            exo.clearMediaItems()
+            holder.binding.playerView.player = exo
+            exo.setMediaItem(buildMediaItem(item))
+            exo.prepare()
+            exo.playWhenReady = true
         }
-
-        exo.setMediaItem(mediaItem)
         exo.repeatMode = Player.REPEAT_MODE_ONE
-        exo.prepare()
-        exo.playWhenReady = true
         currentlyBoundPosition = position
         if (isNewItem) viewModel.recordWatch(item)
+    }
+
+    /**
+     * Phase 18 — DoD-2: silently prepares (buffers, does not play) the item
+     * at [position] on a second `ExoPlayer` so `playAt()` can swap it in
+     * without a visible buffering gap when the user actually swipes there.
+     * A no-op if [position] is already what's preloaded or out of range;
+     * releases any stale preload (e.g. the user swiped backward instead of
+     * forward — 1-ahead preloading of a position nobody's headed to next).
+     */
+    private fun preloadNext(position: Int) {
+        val item = adapter.currentList.getOrNull(position)
+        if (item == null || position == currentlyBoundPosition) {
+            preloadPlayer?.release()
+            preloadPlayer = null
+            preloadedPosition = RecyclerView.NO_POSITION
+            return
+        }
+        if (preloadedPosition == position) return // already preloading/preloaded
+
+        preloadPlayer?.release()
+        val exo = ExoPlayer.Builder(requireContext()).build()
+        exo.setMediaItem(buildMediaItem(item))
+        exo.playWhenReady = false
+        exo.prepare()
+        preloadPlayer = exo
+        preloadedPosition = position
+    }
+
+    private fun buildMediaItem(item: ShortItem): MediaItem = when (item.streamKind) {
+        StreamKind.HLS -> MediaItem.Builder()
+            .setUri(item.streamUrl)
+            .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+            .build()
+        StreamKind.DASH -> MediaItem.Builder()
+            .setUri(item.streamUrl)
+            .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_MPD)
+            .build()
+        StreamKind.PROGRESSIVE -> MediaItem.fromUri(item.streamUrl)
     }
 
     private fun shareShort(item: ShortItem) {
@@ -178,6 +238,9 @@ class ShortsFragment : Fragment() {
         player?.release()
         player = null
         currentlyBoundPosition = RecyclerView.NO_POSITION
+        preloadPlayer?.release()
+        preloadPlayer = null
+        preloadedPosition = RecyclerView.NO_POSITION
         skeletonAnimator?.cancel()
         skeletonAnimator = null
         _binding = null
