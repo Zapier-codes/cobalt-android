@@ -22,10 +22,67 @@ landed yet.
   before starting anything, same as always, since parallel manual sessions
   are still possible.
 
-## Continuation this session: CI's first real build run found two failures,
-## both now fixed (patch `0008`)
+## Continuation this session (part 2): FFmpeg quality/format transcoding
+## landed as Phase 20 (patches `0011`+)
 
-This is a same-session continuation of the remote-config work below —
+Confirmed via `git fetch` that the user applied and pushed patches
+`0008`–`0010` (the CI fixes below) — `origin/master` had moved from
+`ad475ef` to `9937554` with matching content, so those two build fixes
+are real and live pending an actual Actions run.
+
+With `origin/master` now at a known, current commit, rebased the FFmpeg
+quality/format transcoding feature (previously stuck behind two stash
+entries — see the superseded note this replaces) cleanly on top of it:
+
+- `git stash pop` produced exactly two conflicts, both expected and
+  mechanical: `strings.xml` (pure addition on both sides, merged by hand)
+  and `ARCHITECTURE.md` (the feature's own phase write-up was drafted
+  against two now-stale phase numbering schemes in a row — the base kept
+  moving before it could land). Reset `ARCHITECTURE.md` to the real
+  `origin/master` content and re-inserted the write-up as **Phase 20**
+  (before the final gate, which shifted to Phase 21) — the correct slot
+  now that Phases 1–19 are confirmed done and 20 was still an open final
+  gate, not a numbered build phase, when this was drafted.
+- Swept every file the feature touches for stale `Phase 15`/`Phase 18`
+  KDoc references left over from the two earlier (wrong) numbering
+  attempts and corrected them all to `Phase 20` — `Phase 15` in
+  particular now legitimately refers to something else entirely (Shorts
+  feed hardening), so those weren't just stale, they were actively
+  wrong.
+- **Caught a real bug during this same review pass**, the same class
+  just fixed twice in `fragment_settings.xml`/`activity_main.xml`:
+  `sheet_quality_selection.xml` (new this feature) used `app:` attributes
+  (`app:singleSelection`, `app:selectionRequired` on a
+  `MaterialButtonToggleGroup`) without declaring `xmlns:app` on its root
+  — would have been CI failure #3 in the same family as #1 and #2 above
+  had it shipped. Fixed before committing. Also re-ran the repo-wide
+  `xmlns:app`/`xmlns:tools` sweep (this time in Python, not the earlier
+  shell-loop that turned out fragile with empty `grep -c` output) across
+  every staged file, not just the one caught — no other offender.
+- Verified no leftover `<<<<<<<`/`=======`/`>>>>>>>` conflict markers
+  anywhere in the staged tree before committing (`grep -rn` across every
+  staged path), and re-confirmed every staged `.xml` file parses and
+  every touched `.kt` file's brace/paren counts balance.
+
+Landed as one commit, `9952aa4`
+("Phase 20: FFmpeg-based dynamic quality/format transcoding for
+downloads"), full design detail in `ARCHITECTURE.md`'s Phase 20
+write-up (video ladder, audio ladder, `FfmpegTranscoder`'s two
+previously-caught ffmpeg-kit API bugs, the `parentFragmentManager` fix,
+the new `DownloadStatus.CONVERTING` state, etc. — not re-duplicated
+here). Both now-superseded stash entries were dropped (`git stash drop`
+x2) once their content was confirmed subsumed by this commit.
+
+**Not yet done, same as recorded in `ARCHITECTURE.md`'s Phase 20:** not
+built/run against a real toolchain (standing limitation, see workflow
+section above); Shorts' save action still bypasses the quality sheet;
+no cancel button on an in-flight `CONVERTING` row; no Settings UI for the
+two new default-quality preference keys.
+
+## Continuation this session (part 1): CI's first real build run found two
+## failures, both now fixed (patches `0008`–`0010`, confirmed applied)
+
+This was a same-session continuation of the remote-config work below —
 after that landed, the user pasted a live GitHub Actions failure log
 (job "Fix CI build failure: activity_main.xml..." / run #37). Investigated
 and found the log was from a run with **two** AAPT failures, not one:
@@ -43,48 +100,21 @@ and found the log was from a run with **two** AAPT failures, not one:
    `activity_main.xml` error repeated. Fixed by unwrapping `<layout>`
    (verified `SettingsFragment.kt` uses plain ViewBinding with no
    data-binding-only features, so nothing depends on it — full reasoning
-   in `ARCHITECTURE.md`'s new "CI build failures" section, read that
-   before touching this file again). Diffed with `git diff -b -w` to
-   confirm the change is wrapper-only, zero content/behavior change.
+   in `ARCHITECTURE.md`'s "CI build failures" section, read that before
+   touching this file again). Diffed with `git diff -b -w` to confirm the
+   change is wrapper-only, zero content/behavior change.
 
-Both commits (`ec282e1`, `4d841fc`) are local-only, per the workflow
-above. Patch `0008` (`git format-patch origin/master..HEAD`) covers both;
-verified via `git am` against a **fresh fetch of the real, live
-`origin/master`** (not just this sandbox's possibly-stale local copy —
-see "Standing verification habits" below), and the resulting
-`fragment_settings.xml` was confirmed to parse as well-formed XML. Number
-`0008` is a best guess, not a confirmed continuation of a prior count —
-this sandbox's `/mnt/user-data/outputs` was empty at the start of this
-turn (fresh sandbox instance), so the actual last-used number from
-Session 10/11's earlier patches couldn't be cross-checked here; rename if
-it collides with something already downloaded.
+Patches `0008`–`0010` covered this; **confirmed applied and pushed** —
+`origin/master` had these exact commits (under new hashes from `git am`,
+as expected) at the start of this continuation.
 
-**Not yet done:** an actual green GitHub Actions run confirming both
-fixes together — this sandbox can watch neither `gh run list` nor trigger
-a re-run. That confirmation is the first thing to check next session.
-
-**Also carried in this sandbox, not yet delivered:** a substantial
-FFmpeg-based dynamic quality/format transcoding feature (video ladder
-2160p→360p + VP9, audio ladder FLAC/MP3-320/AAC/Opus/Vorbis, a real
-`QualitySelectionSheet` bottom sheet, `TranscodeWorker` via WorkManager,
-etc. — full file list would go here once it lands) was built earlier in
-this sandbox's session against an older base commit (`85644bc`), then
-against `85644bc`'s successor, and is now stashed twice
-(`git stash list`) rather than committed, because `origin/master` moved
-forward substantially (through Phase 19, the remote-config
-infrastructure, and now this CI fix) each time before it could be
-finished and based cleanly. **It is not lost** — it's real, reviewed
-code sitting in this sandbox's stash — but it needs a fresh rebase
-against the current tip (this session's own CI-fix commits included)
-before it can be committed and patched. Flagging this explicitly so nei-
-ther this session nor the next mistakes "not committed yet" for
-"doesn't exist" or re-does the work from scratch. If this sandbox
-instance persists into a follow-up turn, finishing that rebase is the
-natural next step; if not, the FFmpeg feature needs to be rebuilt in a
-fresh sandbox (the design decisions and verified ffmpeg-kit API details
-belong in `ARCHITECTURE.md` once it lands either way).
+**Still not done:** an actual green GitHub Actions run confirming both
+fixes together, and now also the Phase 20 commit above — this sandbox
+can watch neither `gh run list` nor trigger a re-run. That confirmation
+is the first thing to check next session.
 
 ## What this session did: dynamic, centrally-managed cobalt instance URL
+
 
 Starting point: Session 10 had wired a per-device `cobaltApiKey` Settings
 field but the instance URL itself was still a manual per-device
@@ -170,17 +200,16 @@ real repo.
 ```
 cd cobalt-android
 git fetch origin
-git log --oneline origin/master -14
+git log --oneline origin/master -15
 ```
-Expect (top of log, once patch `0008` is applied+pushed): "Document the
-two CI build failures + fixes in ARCHITECTURE.md", "Fix CI build failure:
-fragment_settings.xml used <layout>...", then `ad475ef` ("Fix CI build
-failure: activity_main.xml..."), "Session 10->11 handover: remote-config
-instance URL system complete", the `remote-config.json` + workflow
-commit, the stale-comment fix, the `SettingsSheet` field-removal commit,
-the `LinkResolverRepository` wiring commit, the `RemoteConfigRepository` +
-`SettingsRepository` commit, then `373fdc5` ("Add render.yaml Blueprint")
-and Session 10's commits before that.
+Expect (top of log, once patch `0011` is applied+pushed): "Phase 20:
+FFmpeg-based dynamic quality/format transcoding for downloads", then
+"Session 11 continuation: record the CI-fix work..." (`9937554`),
+"Document the two CI build failures + fixes in ARCHITECTURE.md", "Fix CI
+build failure: fragment_settings.xml used <layout>...", `ad475ef` ("Fix
+CI build failure: activity_main.xml..."), "Session 10->11 handover:
+remote-config instance URL system complete", and Session 10's commits
+below that.
 
 ## Honest limitations of this session's work
 
@@ -207,21 +236,23 @@ and Session 10's commits before that.
 
 ## Immediate next steps
 
-1. **Apply patch `0008` (`git am`) and push, then check the GitHub Actions
-   run that triggers.** This is the actual outstanding verification for
-   both CI fixes above — neither has been confirmed green yet.
-2. **If CI is still red after that**, read the new failure closely before
-   assuming it's a third instance of the same two bug classes swept for
-   above — it may be a genuinely different error now that the first two
-   are out of the way.
-3. **Rebase and land the stashed FFmpeg quality/format transcoding
-   feature** described above — real, reviewed code, currently stuck
-   behind two `git stash` entries in this sandbox because
-   `origin/master` kept moving forward while it was being built. This is
-   probably the single highest-value next step if this sandbox instance
-   continues.
-4. **`git fetch` and re-read `ARCHITECTURE.md`'s infrastructure section**
-   before anything else, same standing advice as always.
+1. **Apply patch `0011` (`git am`) and push, then check the GitHub
+   Actions run it triggers.** This is the actual outstanding verification
+   for the CI fixes AND the new Phase 20 FFmpeg dependency
+   (`ffmpeg-kit-full-gpl:6.0-2`) actually resolving from Maven Central —
+   none of the three have been confirmed against a real build yet.
+2. **If CI is red**, check first whether it's the `ffmpeg-kit-full-gpl`
+   dependency failing to resolve (see `FfmpegTranscoder`'s
+   `DEPENDENCY_NOTE` KDoc for the fallback fork) before assuming it's a
+   new instance of the `xmlns:app`/`xmlns:tools` bug class already swept
+   for twice this session.
+3. **Phase 20's explicit scope boundaries are real follow-up work, not
+   just caveats:** Settings UI for the two new default-quality
+   preference keys (follows Phase 13's own pattern exactly); a cancel
+   button for an in-flight `CONVERTING` row; wiring the quality sheet
+   into Shorts' save action.
+4. **`git fetch` and re-read `ARCHITECTURE.md`'s Phase 20 + infrastructure
+   sections** before anything else, same standing advice as always.
 5. **Confirm a real resolve against `cobalt-api-yuol.onrender.com` works
    end-to-end** (paste a link in Home, confirm the picker shows real
    formats) — this still hasn't been done by any session, per Session
