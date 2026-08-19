@@ -89,7 +89,9 @@ dependencies {
     // DEPENDENCY_NOTE KDoc for the full incident writeup.
     //
     // Replaced with `com.antonkarpenko:ffmpeg-kit-full-gpl` (sk3llo's
-    // actively-maintained fork, github.com/sk3llo/ffmpeg-kit-flutter —
+    // actively-maintained fork, github.com/sk3llo/ffmpeg_kit_flutter —
+    // underscores, not hyphens; the hyphenated form is a dead link, see
+    // FfmpegTranscoder's DEPENDENCY_NOTE for how this was confirmed —
     // 126+ stars, real users, releases through Jul 2026), rebuilt against
     // FFmpeg v8.1.1 (vs the dead original's 6.0). Verified before pinning:
     // (1) POM declares dual GPL-3.0/LGPL-3.0 licensing and the README

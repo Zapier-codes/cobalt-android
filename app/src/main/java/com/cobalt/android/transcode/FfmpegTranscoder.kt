@@ -201,7 +201,8 @@ class FfmpegTranscoder(private val context: Context) {
          *
          * FIXED: swapped to `com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1`
          * — sk3llo's actively-maintained fork
-         * (github.com/sk3llo/ffmpeg-kit-flutter), rebuilt against FFmpeg
+         * (github.com/sk3llo/ffmpeg_kit_flutter — underscores, not
+         * hyphens; see the naming note below), rebuilt against FFmpeg
          * v8.1.1. Verified before pinning, not assumed:
          *   1. Its Maven POM declares dual GPL-3.0/LGPL-3.0 licensing and
          *      the README explicitly lists x264/x265/vid.stab/xvidcore as
@@ -217,6 +218,25 @@ class FfmpegTranscoder(private val context: Context) {
          *      republished under new Maven coordinates. That's why this
          *      file's imports (`com.arthenica.ffmpegkit.*`, top of file)
          *      needed zero changes for the swap.
+         *
+         * NAMING NOTE (the repo name itself was wrong in two places in this
+         * codebase until this was checked directly): the fork's own Maven
+         * POM — and therefore Maven Central's and mvnrepository.com's
+         * "HomePage" field — advertises
+         * `github.com/sk3llo/ffmpeg-kit-flutter` (hyphens). That URL is a
+         * 404; upstream's own published metadata is simply wrong. The real,
+         * live repository is `github.com/sk3llo/ffmpeg_kit_flutter`
+         * (underscores) — confirmed by fetching both URLs directly (the
+         * hyphenated one 404s, the underscored one resolves) and by
+         * mvnrepository.com's separately-curated sidebar "Links" section,
+         * which points to the underscored name even on the same page whose
+         * "HomePage" field shows the dead hyphenated one. The Maven
+         * coordinate itself (`com.antonkarpenko:ffmpeg-kit-full-gpl`) was
+         * never affected by this — Maven Central doesn't care what a POM's
+         * `<url>` tag says — but two comments in this codebase had copied
+         * the wrong (hyphenated) URL from that same dead POM field. Fixed
+         * here and in `app/build.gradle.kts`; if you see the hyphenated
+         * form anywhere else, it's wrong, not a stylistic variant.
          *
          * Real risk, stated plainly: this is still a community-run fork,
          * not an official release — releases have been regular (monthly

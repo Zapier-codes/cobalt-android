@@ -1412,6 +1412,42 @@ assuming a shared cause from their both appearing in one CI log. Still
 **not confirmed by an actual green GitHub Actions run** — same standing
 caveat as Round 1; this sandbox has no way to trigger or watch one.
 
+### Round 3 — wrong fork repo name in two code comments (not a CI failure,
+### a documentation-accuracy fix caught on request)
+
+The **Maven coordinate itself was never wrong** —
+`com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1` is real, currently published
+(reconfirmed directly against Maven Central's own artifact page this
+round, not just re-trusting Round 2's `repo1.maven.org` check), and
+resolves fine. What was wrong: two code comments
+(`app/build.gradle.kts`, `FfmpegTranscoder.kt`'s `DEPENDENCY_NOTE`) named
+the fork's GitHub repo as `github.com/sk3llo/ffmpeg-kit-flutter`
+(hyphens) — that URL 404s. The real, live repo is
+`github.com/sk3llo/ffmpeg_kit_flutter` (underscores).
+
+Root cause, not just the symptom: the fork's **own Maven POM** declares
+`<url>https://github.com/sk3llo/ffmpeg-kit-flutter</url>` — upstream's own
+published metadata has the dead hyphenated URL baked in, and both
+Sonatype's and mvnrepository.com's "HomePage" field surface that same
+wrong value verbatim. mvnrepository.com separately curates a "Links"
+sidebar that points to the correct underscored name even on the same
+page — the two disagree with each other on the same site. A prior session
+had evidently copied the wrong (but official-looking, "HomePage"-labeled)
+URL rather than the correct one, into two comments — while a third
+reference elsewhere in the very same `FfmpegTranscoder.kt` file (the
+`sk3llo/ffmpeg_kit_flutter#71` issue-tracker citation) already had the
+correct underscored form, so the file was internally inconsistent even
+before this was checked.
+
+**Verified directly, not inferred**: fetched both URLs — the hyphenated
+one returns a real HTTP 404, the underscored one resolves to the actual
+repository (126+ stars, active issues through late 2025/2026, matches
+every other detail already cited about this fork). Fixed both comments;
+left the still-correct third reference untouched. No functional/dependency
+change — this was a documentation-accuracy fix, not a build fix. If the
+hyphenated form turns up anywhere else in this codebase in the future,
+it's wrong on sight, not a stylistic variant worth double-checking.
+
 ---
 ## dynamic instance URL
 
