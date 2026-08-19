@@ -33,14 +33,24 @@ class SettingsRepository(context: Context) {
      */
     enum class ThemeMode { LIGHT, DARK, DYNAMIC }
 
-    var cobaltInstanceUrl: String
-        get() = prefs.getString("cobalt_url", "https://cobalt.tools") ?: "https://cobalt.tools"
+    /**
+     * Internal cache only — NOT a user-facing setting anymore. Holds the
+     * last cobalt instance URL [com.cobalt.android.remoteconfig.RemoteConfigRepository]
+     * successfully fetched from `remote-config.json`, so a later launch
+     * with GitHub briefly unreachable still has something better than the
+     * hardcoded default to fall back to. See that class's doc comment for
+     * the full fallback chain. Not shown or editable in Settings — the
+     * instance URL is centrally managed now, not per-device.
+     */
+    var cachedRemoteCobaltUrl: String
+        get() = prefs.getString("cobalt_url", "") ?: ""
         set(v) { prefs.edit().putString("cobalt_url", v).apply() }
 
     /**
      * Optional. cobalt's real auth scheme (github.com/imputnet/cobalt,
      * docs/api.md) is `Authorization: Api-Key <value>` on every request —
-     * only required if the configured instance ([cobaltInstanceUrl]) has
+     * only required if the configured instance (see
+     * `RemoteConfigRepository.getCobaltInstanceUrl()`) has
      * API-key auth turned on server-side; the public cobalt.tools default
      * doesn't. Blank means "send no Authorization header", which
      * [LinkResolverRepository] treats as the no-auth-required case.
