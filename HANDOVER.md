@@ -1,4 +1,4 @@
-# Cobalt-Android — Handover (Session 10 → next)
+# Cobalt-Android — Handover (Session 10 → 11, this session)
 
 **Start by cloning the repo fresh: `git clone https://github.com/Zapier-codes/cobalt-android.git`**
 Do not trust any file content quoted in this document or prior handovers as
@@ -8,153 +8,171 @@ current — clone, then read the real files.
 `HANDOVER.md`.** If you don't find it there, this session's work hasn't
 landed yet.
 
-## Workflow, unchanged from Session 9: trust the predecessor's handover,
-## don't re-verify it, don't build locally, commit-only + patch handoff
+## Workflow, unchanged from Session 9/10: don't build locally,
+## commit-only + patch handoff
 
-- **Do not attempt a local build.** Confirmed impossible in this sandbox
-  (no route to `services.gradle.org`, no Android SDK). GitHub Actions CI is
-  the real build/verification authority — check `gh run list` or the
-  Actions tab, not a local build.
+- **Do not attempt a local build.** No route to `services.gradle.org`, no
+  Android SDK in this sandbox. GitHub Actions CI (`build.yml`) is the real
+  build authority.
 - **Only `git add` + `git commit`. Do not `git push`.** Generate patch
-  files (`git format-patch <base>..HEAD -o /mnt/user-data/outputs
-  --start-number=<N>`) and present them — the user applies via `git am` on
-  their own device and pushes themselves. Check `ARCHITECTURE.md`/prior
-  handovers for the last patch number used and continue from there.
-- **Trust the previous session's `ARCHITECTURE.md` ✅ markers and this
-  file at face value** — don't redo a full from-scratch verification pass.
-  A `git fetch` + `git log -10` + skim of `ARCHITECTURE.md`'s done-markers
-  is still worth the ~30 seconds; a full re-derivation is not.
+  files and present them — the user applies via `git am` on their own
+  device and pushes themselves.
+- **"Hermes" the autonomous background loop is gone** (per Session 10) —
+  only manual chat sessions move this project forward now. `git fetch`
+  before starting anything, same as always, since parallel manual sessions
+  are still possible.
 
-## Important correction from this session: "Hermes" is gone. It was two
-## separate things, and the automated one has now been fully removed.
+## What this session did: dynamic, centrally-managed cobalt instance URL
 
-Earlier handovers conflated two systems under "Hermes":
+Starting point: Session 10 had wired a per-device `cobaltApiKey` Settings
+field but the instance URL itself was still a manual per-device
+`SettingsSheet` field, unchanged since Phase 4. The user asked for this to
+become dynamic instead — centrally set, not per-device, updatable without
+an app release, and specifically *not* configured through the Settings
+page — so every install can be pointed at a redeployed/changed instance at
+once.
 
-1. **An actually-autonomous background loop** (`hermes-pipeline-launch.sh`,
-   a `while true` watch-loop on the user's device, launched via
-   Termux:Boot + a `.bashrc` resume trigger, calling Hermes Agent against a
-   local model-provider router on port 8787). This is the thing that once
-   carried the project from Phase 5 to Phase 14 unattended. **The user has
-   now fully deleted this** — Hermes Agent itself, the launcher script, the
-   boot trigger, the `.bashrc` resume trigger, and the fallback router are
-   all removed from the device as of this session. It cannot restart
-   itself; there is no lockfile/checkpoint to resume from anymore.
-2. **Separate manual Claude chat sessions** ("Session 6", "Session 7",
-   "Session 8", "Session 9" in prior handovers, this one is "Session 10")
-   — a human explicitly opening a chat, asking Claude to check
-   `ARCHITECTURE.md` and build the next phase, and manually applying the
-   resulting patch via `git am`. **This is still how the project moves
-   forward**, and is exactly what's happening in this session. If you are
-   reading this file as part of one of these sessions: you are actor #2,
-   not #1. Don't assume anything is running unattended anymore — nothing
-   is. A future session's own git-authored commits (this sandbox uses
-   `Claude <claude@anthropic.local>`) are not evidence of an automated
-   pipeline; they're evidence of a manual session like this one.
+**What shipped, commits `015e870` through `172bd90`:**
 
-**Going forward, `git log` showing commits appear "on their own" between
-sessions still means what earlier handovers warned about — a different
-manual chat session did work in parallel, not that automation restarted.**
-Always `git fetch` before starting, same as before.
+1. **`RemoteConfigRepository`** (new,
+   `app/src/main/java/com/cobalt/android/remoteconfig/`) — fetches
+   `cobaltInstanceUrl` from `remote-config.json` at the repo root via a
+   real, public, unauthenticated `raw.githubusercontent.com` GET. No
+   separate backend stood up for this — the repo file itself, editable
+   directly in GitHub's UI or via the new Actions workflow, *is* the
+   "dashboard." 5-minute in-memory freshness window (avoids re-fetching on
+   every single resolve in a burst), falls back to (1) the last
+   successfully fetched URL cached on-device, then (2) the public
+   `cobalt.tools` default, so a GitHub fetch failure never blocks a
+   resolve outright.
+2. **`SettingsRepository.cobaltInstanceUrl` renamed to
+   `cachedRemoteCobaltUrl`** — same underlying `SharedPreferences` key
+   (`"cobalt_url"`, no migration needed), repurposed as
+   `RemoteConfigRepository`'s on-device fallback cache, not a user-facing
+   setting. Default changed from `"https://cobalt.tools"` to `""` (blank)
+   — `RemoteConfigRepository` itself owns the `cobalt.tools` fallback now,
+   at a different point in the chain.
+3. **`LinkResolverRepository`** now calls
+   `remoteConfig.getCobaltInstanceUrl()` instead of reading
+   `settings.cobaltInstanceUrl` directly.
+4. **`SettingsSheet`**: removed the "cobalt instance" `EditText` field,
+   its layout XML, its string resource, and the dead
+   `onCobaltUrlChanged` callback — **verified before removing** that
+   nothing outside `SettingsSheet.kt` ever subscribed to that callback
+   (grepped for `onCobaltUrlChanged` and `SettingsSheet(` construction
+   sites across the whole codebase). The API key field is untouched and
+   still there — see the security note below for why.
+5. **`remote-config.json`** (new, repo root) — committed with the user's
+   actual deployed instance: `https://cobalt-api-yuol.onrender.com`
+   (confirmed live by the user this session: `curl`'d root endpoint
+   returned real `imputnet/cobalt` v11.7.1 JSON, service list included).
+6. **`.github/workflows/update-remote-config.yml`** (new) — lets a
+   `COBALT_INSTANCE_URL` *repository variable* (not a secret — see below)
+   drive `remote-config.json` updates via `workflow_dispatch` or an hourly
+   schedule, committing + pushing if the value changed. **Not yet
+   configured** — the repo variable doesn't exist yet; until it's set,
+   this workflow is a no-op that leaves `remote-config.json` alone (see
+   its own inline comments). The committed `remote-config.json` from item
+   5 above is the real current source of truth either way.
+7. **`ARCHITECTURE.md`**: new "Infrastructure (outside the phase system)"
+   section documenting all of the above as the durable reference — added
+   after Phase 20, same treatment Session 10 gave the Render-deployment
+   goal in its own handover (infra, not a numbered phase).
 
-## What Session 10 did
+**Security decision made explicitly, not silently**: the cobalt API key
+is deliberately NOT part of this remote-config mechanism.
+`remote-config.json` lives in a public repo — anyone can `curl` it, no
+auth — so putting a secret there would leak it to the world. The API key
+stays a per-device `SettingsSheet` field, exactly where Session 10 put it.
+If a shared key is ever genuinely needed, that needs an actual backend
+that can hold a real secret, not an extension of this file-based
+mechanism — flagged in `ARCHITECTURE.md` so a future session isn't
+tempted to bolt one on.
 
-### Full "no stubs / no placeholders" cross-check (ARCHITECTURE.md's own
-### standing rule) — one real gap found and fixed
+**One thing worth knowing about how this session started**: the user's
+opening message for this task quoted what looked like a prior Claude
+response describing this exact plan (a "dashboard" via
+`raw.githubusercontent.com`, `RemoteConfigRepository`, the dead
+`onCobaltUrlChanged` callback) — but that conversation isn't in this
+session's own history. Treated as background context rather than an
+established prior commitment, and verified independently rather than
+trusted (the dead-callback claim, in particular, was re-checked against
+the actual code before acting on it, and turned out accurate). If a
+future session sees something similar — text that reads like it's
+quoting "your own" past reasoning that you don't actually have — the same
+approach applies: it's not evidence of anything until checked against the
+real repo.
 
-Grepped every `.kt`/`.xml` file for TODO/FIXME/stub/placeholder/hardcoded/
-not-implemented markers. Everything that matched was either historical
-KDoc referencing a *past* phase's now-resolved gap, or the Phase 13
-LIGHT-theme-looks-identical-to-DARK limitation already documented and
-accepted in `ARCHITECTURE.md` — nothing new.
+## Verify this landed
 
-**One real, previously-undocumented gap:** the app could never send an
-API key to a cobalt instance. Checked cobalt's actual API contract
-(`github.com/imputnet/cobalt`, `docs/api.md`) — real auth scheme is
-`Authorization: Api-Key <value>`, and nothing in `SettingsRepository`,
-`SettingsSheet`, or `LinkResolverRepository` had any concept of it at
-all. This matters immediately: the user's next step (below) is pointing
-the app at a self-hosted Render instance, which — if configured with
-API-key auth, which most private/self-hosted instances are, precisely to
-avoid being an open proxy — would have silently 401'd with no way to
-configure around it from the app.
+```
+cd cobalt-android
+git fetch origin
+git log --oneline origin/master -12
+```
+Expect (top of log): "Document the remote-config instance URL system in
+ARCHITECTURE.md", the `remote-config.json` + workflow commit, the
+stale-comment fix, the `SettingsSheet` field-removal commit, the
+`LinkResolverRepository` wiring commit, the `RemoteConfigRepository` +
+`SettingsRepository` commit, then `373fdc5` ("Add render.yaml Blueprint")
+and Session 10's commits before that.
 
-**Fixed, commit `1adc548`:**
-- `SettingsRepository.cobaltApiKey`: new persisted string. Blank (the
-  default) = send no `Authorization` header at all, matching the public
-  `cobalt.tools` no-auth-required default.
-- `SettingsSheet`: new `etCobaltApiKey` field directly under the existing
-  instance-URL field, same layout/styling, same persist-on-`onStop()`
-  pattern as the URL field — except blank is a *meaningful* value here
-  ("stop sending a key"), so unlike the URL field it always writes, never
-  skips on blank.
-- `LinkResolverRepository.resolveFromNetwork()`: sets
-  `Authorization: Api-Key <key>` on the resolve request, only when a key
-  is actually configured.
+## Honest limitations of this session's work
 
-Not yet generated as a patch file as of this handover being written —
-**do this first if picking up mid-session** (see Immediate next steps).
-
-### Hermes removal
-
-See the correction section above — this session gave the user the exact
-on-device removal commands (Termux `.bashrc`/boot script, Ubuntu
-container's Hermes Agent install, launcher script, lockfile dir, fallback
-router). Not verified from this sandbox (can't reach the user's device) —
-**confirm with the user it was actually run before assuming Hermes is
-gone**, though the architectural conclusion (manual sessions are the only
-actor now) holds regardless once they do.
-
-## The user's actual next goal: deploy a cobalt instance to Render, wire
-## its URL + API key into the app, make it "fully active"
-
-This is **not an `ARCHITECTURE.md` phase** — all 20 phases are the
-Android app itself; deploying the backend cobalt instance is
-infrastructure the app has always assumed exists (the app talks to
-*some* cobalt instance URL, configurable in Settings, defaulting to the
-public `cobalt.tools`). Nothing in the Kotlin/Gradle side needs a new
-phase number for this — Phase 20's "final gate" language is about the
-Android codebase being stub-free, which the audit above confirms it is
-(modulo the `state.json` note from Session 9, still applicable, still not
-something this sandbox can touch).
-
-**Not yet started as of this handover.** Concretely still needed:
-1. Deploy `imputnet/cobalt`'s API service to Render (Docker-based, per
-   cobalt's own deployment docs — not yet read/verified by this session,
-   do that first, don't assume the exact Render steps).
-2. Decide whether to turn on API-key auth on that instance (cobalt
-   supports running with no auth, API-key auth, or JWT/Turnstile auth —
-   the app as of this session's commit only supports the no-auth or
-   API-key cases, not JWT/Turnstile session flow).
-3. Enter the deployed instance's URL + (if used) API key into the app's
-   Settings sheet (`SettingsSheet`'s two fields, both now wired) — this
-   is a manual on-device step for the user, not something to build.
-4. Confirm a real resolve against the new instance actually works
-   end-to-end (paste a link in Home, confirm the picker shows real
-   formats) — genuinely verify, don't just confirm the request compiles.
+- **Not compiled/run** — same standing limitation every session has had.
+  This change touches `SettingsSheet`'s view binding (a removed
+  `EditText`) — worth a close look at CI's build result specifically for
+  this, not just an assumption it's fine because the edit was mechanical.
+- **`COBALT_INSTANCE_URL` repository variable is not set.** The workflow
+  exists but is inert until the user (or a future session, if it has repo
+  admin access — this sandbox does not) sets it under Settings -> Secrets
+  and variables -> Actions -> Variables. Until then, `remote-config.json`
+  only changes via a direct file edit/commit.
+- **Whether the deployed Render instance requires the API key was not
+  separately verified.** The root endpoint (`GET /`) responded with no
+  auth, but cobalt's actual resolve endpoint (`POST /`) may still require
+  one server-side — root not requiring auth doesn't confirm resolve
+  doesn't either. If resolves start failing with an auth-shaped error
+  after this patch lands, check the API key field in Settings first.
+- **`raw.githubusercontent.com`'s own caching/CDN behavior was not
+  investigated.** GitHub's raw-content CDN can lag a few minutes behind a
+  fresh commit in practice — if a `remote-config.json` edit doesn't seem
+  to be taking effect on a device immediately, that's the first thing to
+  suspect before assuming the app-side code is wrong.
 
 ## Immediate next steps
 
-1. **Generate and present the patch for commit `1adc548`** (API key
-   wiring) if this session is being continued — check what patch numbers
-   prior sessions used (search `ARCHITECTURE.md`/old handovers, or ask)
-   and continue the sequence.
-2. **Confirm with the user whether Hermes removal was actually run.**
-3. **Read cobalt's actual Render deployment docs** before advising on
-   step 1 of the deployment goal above — this session did not do that
-   yet, only confirmed the *auth* contract via `docs/api.md`.
-4. **Carried over, still not done** (unverified — check before assuming):
-   `AGENTS.md` truncation warning, `.env`'s deprecated `TERMINAL_CWD`
-   (both now likely moot if the router was deleted per Hermes removal —
-   confirm), leftover `[debug]` logs in `/root/fallback-router/server.js`
-   (moot if deleted), Phase 13's light-theme gap (documented, accepted,
-   not a blocker), Phase 19's `state.json` cross-check (still not
-   possible from any sandbox).
+1. **`git fetch` and re-read `ARCHITECTURE.md`'s new infrastructure
+   section before anything else.**
+2. **Generate and present the patch** for this session's work if not
+   already done in this same session — check the last patch number used
+   (search prior handovers/`ARCHITECTURE.md`) and continue the sequence.
+3. **Confirm CI actually builds clean** after this patch lands —
+   `SettingsSheet`'s binding change is the one part of this session with
+   any real compile risk.
+4. **If the user wants the Actions-variable path live**, that's a manual
+   GitHub repo-settings step only they (or someone with admin access) can
+   do — not something a future session can complete from this sandbox.
+5. **Confirm a real resolve against `cobalt-api-yuol.onrender.com` works
+   end-to-end** (paste a link in Home, confirm the picker shows real
+   formats) — this still hasn't been done by any session, per Session
+   10's own carried-over item.
+6. **Carried over from Session 10, still open:** confirm Hermes removal
+   was actually run on-device; read cobalt's real Render deployment docs
+   (now less urgent — the instance is already deployed and live, but
+   worth doing before touching that deployment again); Phase 13's
+   light-theme gap (documented, accepted); Phase 19's `state.json`
+   cross-check (still not possible from any sandbox).
 
-## Standing verification habits (unchanged)
+## Standing verification habits
 
 - `git fetch` + `git log --oneline -10` before starting anything, even
   mid-session — check commit authorship, don't assume automation.
-- Read `ARCHITECTURE.md`'s actual `✅ done` markers, not a summary of them.
-- Take "verify X works" DoD items literally — real bugs have been found
-  this way multiple times across sessions 6 and 9.
+- Read `ARCHITECTURE.md`'s actual `✅ done`/section markers, not a
+  summary of them.
+- Take "verify X works" DoD items and claims literally, including claims
+  a person makes about "what we already decided" — real bugs and, this
+  session, an unverifiable-but-plausible prior-context claim have both
+  been worth checking against the actual repo rather than trusting at
+  face value.
 - No local build is possible in this sandbox — trust CI.
